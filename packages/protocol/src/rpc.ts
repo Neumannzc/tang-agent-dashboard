@@ -5,12 +5,14 @@ import type { AgentPermissionResponse, AgentPersistenceHandle, AgentProvider, Ag
 
 export type ClientRequest =
   | { method: "providers.list" }
-  | { method: "agent.create"; params: { provider: AgentProvider; cwd: string; model?: string; modeId?: string; systemPrompt?: string } }
+  | { method: "agent.create"; params: { provider: AgentProvider; cwd: string; model?: string; modeId?: string; thinkingOptionId?: string; systemPrompt?: string } }
   | { method: "agent.prompt"; params: { sessionId: string; prompt: string } }
   | { method: "agent.interrupt"; params: { sessionId: string } }
   | { method: "agent.close"; params: { sessionId: string } }
   | { method: "agent.modes"; params: { sessionId: string } }
+  | { method: "agent.mode.set"; params: { sessionId: string; modeId: string } }
   | { method: "agent.model.set"; params: { sessionId: string; modelId: string } }
+  | { method: "agent.thinking.set"; params: { sessionId: string; thinkingOptionId: string | null } }
   | { method: "agent.permission.respond"; params: { sessionId: string; requestId: string; behavior: "allow" | "deny"; value?: string; interrupt?: boolean } }
   | { method: "agent.models"; params: { provider: AgentProvider } }
   | { method: "sessions.list" }
@@ -42,6 +44,7 @@ export interface SessionSummary {
   cwd?: string;
   model?: string;
   modeId?: string;
+  thinkingOptionId?: string;
   createdAt: number;
   lastActiveAt?: number;
   active: boolean;

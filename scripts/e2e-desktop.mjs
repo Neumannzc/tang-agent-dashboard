@@ -69,31 +69,19 @@ async function main() {
   await page.waitForSelector(".ws-item", { timeout: 15000 });
   console.log("✓ workspace 已创建");
 
-  // 创建会话（默认 pi）——用 tabs 行的 + 按钮（.tab-add）打开会话模态
-  await page.click(".tab-add");
-  await page.waitForSelector(".modal .p-card", { timeout: 15000 });
-  await page.click(".modal-foot button.btn-primary");
-  try {
-    await page.waitForSelector(".tab", { timeout: 30000 });
-  } catch (err) {
-    // 收集错误信息辅助诊断
-    const diag = await page.evaluate(() =>
-      JSON.stringify({
-        modal: document.querySelector(".modal")?.textContent?.slice(0, 120),
-        error: document.querySelector(".msg-error")?.textContent,
-        tabs: [...document.querySelectorAll(".tab")].map((t) => t.textContent),
-        body: document.body.innerText.slice(0, 300),
-      }),
-    );
-    console.error("[e2e] 会话创建诊断:", diag);
-    throw err;
-  }
-  console.log("✓ 会话已创建");
+  // 创建会话（draft composer 流程：点 inline NewSessionRow → 聚焦 textarea → 发首条消息即建会话）
+  await page.waitForSelector(".new-session-row", { timeout: 15000 });
+  await page.click(".new-session-row");
+  await page.waitForFunction(
+    () => {
+      const ta = document.querySelector("textarea");
+      return ta === document.activeElement;
+    },
+    { timeout: 5000 },
+  );
+  console.log("✓ draft composer 已聚焦");
 
-  // 等待 modes 异步加载完成
-  await page.waitForTimeout(2500);
-
-  // 发送消息（send 按钮是图标按钮，用 title 定位；textarea 受控需 native setter）
+  // 输入提示并发送，会话建立 + assistant 回复一起被验证
   await page.evaluate((prompt) => {
     const textarea = document.querySelector("textarea");
     const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
@@ -105,6 +93,20 @@ async function main() {
     { timeout: 5000 },
   );
   await page.click(".send");
+  try {
+    await page.waitForSelector(".session-row", { timeout: 30000 });
+  } catch (err) {
+    const diag = await page.evaluate(() =>
+      JSON.stringify({
+        error: document.querySelector(".msg-error")?.textContent,
+        composer: document.querySelector(".composer-wrap")?.textContent?.slice(0, 120),
+        body: document.body.innerText.slice(0, 300),
+      }),
+    );
+    console.error("[e2e] 会话创建诊断:", diag);
+    throw err;
+  }
+  console.log("✓ 会话已创建（draft 提交后转入 active session）");
   await page.waitForSelector(".msg .body .md", { timeout: 90000 });
   await page.waitForFunction(
     () => {

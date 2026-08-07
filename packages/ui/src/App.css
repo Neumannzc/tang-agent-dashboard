@@ -20,9 +20,72 @@
   --danger: #e06c6c;
   --warn: #d9a45b;
   --info: #7aa2d9;
+
+  /* 新增 layer surface 阶梯（DESIGN.md §2，对齐 CodexPlusPlus bg-base/deep/layer-01..04） */
+  --surface-base: #181818;
+  --surface-deep: #141414;
+  --surface-layer-01: #1f1f1f;
+  --surface-layer-02: #212121;
+  --surface-layer-03: #262626;
+  --surface-popover: #282828;
+
+  /* 既有别名（迁移兼容，新代码用新名） */
+  --bg: var(--surface-base);
+  --bg-sunken: var(--surface-deep);
+  --card: var(--surface-layer-02);
+  --card-hover: var(--surface-layer-03);
+  --popover: var(--surface-popover);
+  --sidebar: #171717;
+
+  /* 边线新名 */
+  --border-subtle: #262626;
+  --border-base: #303030;
+  --border-hover: #4a4a4a;
+  --border-soft: var(--border-subtle);
+  --border: var(--border-base);
+
+  /* 文本新名 */
+  --text-primary: #ececec;
+  --text-muted: #afafaf;
+  --text: var(--text-primary);
+  --text-dim: var(--text-muted);
+
+  /* Focus ring（DESIGN.md §2 + §5 chip focus） */
+  --ring: rgba(205, 143, 116, 0.45);
+
+  /* 阴影边界（DESIGN.md §7：popover 用 hairline + soft shadow 合一，替代 border） */
+  --elevation-floating: 0 8px 16px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(255, 255, 255, 0.04);
+  --elevation-prominent: 0 24px 64px rgba(0, 0, 0, 0.55);
+
+  /* 间距 token（DESIGN.md §4 4px base） */
+  --space-05: 2px;
+  --space-1: 4px;
+  --space-15: 6px;
+  --space-2: 8px;
+  --space-25: 10px;
+  --space-3: 12px;
+  --space-35: 14px;
+  --space-4: 16px;
+  --space-6: 22px;
+  --space-9: 28px;
+  --space-11: 40px;
+
+  /* Mode 主题色三色一体（DESIGN.md §2.2，对齐 opencode agent solid/border/background）
+     仅 mode chip 在该 mode 是当前激活时使用。 */
+  --mode-plan-solid: var(--info);
+  --mode-plan-border: rgba(122, 162, 217, 0.2);
+  --mode-plan-background: rgba(122, 162, 217, 0.1);
+  --mode-default-solid: var(--accent);
+  --mode-default-border: rgba(205, 143, 116, 0.2);
+  --mode-default-background: rgba(205, 143, 116, 0.1);
+  --mode-custom-solid: var(--accent-hover);
+  --mode-custom-border: rgba(217, 156, 130, 0.2);
+  --mode-custom-background: rgba(217, 156, 130, 0.1);
+
   --r-sm: 8px;
   --r: 12px;
   --r-lg: 24px;
+  --r-2xl: 14px;
   --mono: "SFMono-Regular", ui-monospace, "JetBrains Mono", Consolas, monospace;
   --sans: -apple-system, "SF Pro Text", "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
 }
@@ -308,6 +371,170 @@ body {
   background: var(--danger);
 }
 
+/* ============ 项目块 + 嵌套会话（DESIGN.md §5.3，替代 tabs-row） ============ */
+
+.ws-block {
+  margin-bottom: 2px;
+}
+
+.ws-sessions {
+  padding: 2px 4px 6px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 5px var(--space-2);
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  transition: background-color 100ms, color 100ms;
+}
+
+.session-row:hover {
+  background: var(--surface-layer-01);
+  color: var(--text-primary);
+}
+
+.session-row.active {
+  background: var(--surface-layer-01);
+  border-left-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.session-row .session-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-row .session-time {
+  font-size: 11px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.session-row.confirming .session-time {
+  color: var(--status-danger);
+  font-weight: 600;
+}
+
+.session-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  width: 30px;
+  flex-shrink: 0;
+  opacity: 0;
+}
+
+.session-row:hover .session-row-actions,
+.session-row:focus-within .session-row-actions {
+  opacity: 1;
+}
+
+.session-action {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+}
+
+.session-action:hover {
+  background: var(--surface-layer-03);
+  color: var(--text-primary);
+}
+
+.session-action .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.session-spinner {
+  width: 11px;
+  height: 11px;
+  border: 2px solid rgba(122, 162, 217, 0.25);
+  border-top-color: var(--status-info);
+  border-radius: 50%;
+  display: inline-block;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-spinner {
+    animation: none;
+    border: none;
+    width: auto;
+    height: auto;
+  }
+
+  .session-spinner::after {
+    content: "⋯";
+    color: var(--status-info);
+  }
+}
+
+.new-session-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  padding: 5px var(--space-2);
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--sans);
+  font-size: 12px;
+  margin-top: 2px;
+  transition: background-color 100ms, color 100ms;
+}
+
+.new-session-row:hover {
+  background: var(--surface-layer-01);
+  color: var(--text-primary);
+}
+
+.new-session-row.active {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+  border-left-color: var(--accent);
+}
+
+.new-session-row .icon {
+  width: 13px;
+  height: 13px;
+}
+
+.new-session-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ============ 主区 ============ */
 
 .main {
@@ -432,101 +659,6 @@ body {
   border-radius: 50%;
   display: inline-block;
   flex-shrink: 0;
-}
-
-/* ============ 会话 tabs 行 ============ */
-
-.tabs-row {
-  display: flex;
-  align-items: stretch;
-  gap: 2px;
-  padding: 6px 10px 0;
-  border-bottom: 1px solid var(--border-soft);
-  overflow-x: auto;
-  background: var(--bg);
-  flex-shrink: 0;
-}
-
-.tabs-row::-webkit-scrollbar {
-  height: 0;
-}
-
-.tab {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 6px 10px 7px;
-  border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: var(--r-sm) var(--r-sm) 0 0;
-  font-size: 12.5px;
-  color: var(--text-dim);
-  cursor: pointer;
-  white-space: nowrap;
-  max-width: 220px;
-  font-family: var(--sans);
-  background: transparent;
-}
-
-.tab:hover {
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text);
-}
-
-.tab.active {
-  background: var(--bg-sunken);
-  border-color: var(--border-soft);
-  color: var(--text);
-}
-
-.tab .t-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tab .close {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-faint);
-  flex-shrink: 0;
-}
-
-.tab .close:hover {
-  background: var(--card-hover);
-  color: var(--text);
-}
-
-.tab .close .icon {
-  width: 12px;
-  height: 12px;
-}
-
-.tab-add {
-  padding: 6px 10px;
-  color: var(--text-faint);
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  border-radius: 6px 6px 0 0;
-  cursor: pointer;
-  border: 1px solid transparent;
-  background: transparent;
-  font-family: var(--sans);
-}
-
-.tab-add:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text);
-}
-
-.tabs-empty {
-  padding: 6px 12px 7px;
-  font-size: 12px;
-  color: var(--text-faint);
 }
 
 /* ============ 对话流 ============ */
@@ -1021,11 +1153,18 @@ body {
   cursor: not-allowed;
 }
 
-.composer-foot {
+.composer-toolbar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 8px 10px;
+  gap: var(--space-1);
+  padding: 5px var(--space-2) 7px; /* 行总高 40px（28px chip + 12px padding，DESIGN.md §5.2） */
+}
+
+.composer-hint {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-right: var(--space-15);
+  white-space: nowrap;
 }
 
 .c-icon {
@@ -1342,4 +1481,289 @@ body {
 .i-badge.gone {
   color: var(--text-faint);
   border-color: var(--border);
+}
+
+/* ============ DESIGN.md §5.1 PopoverShell  ============ */
+
+.popover-shell {
+  background: var(--surface-popover);
+  border-radius: var(--r);
+  box-shadow: var(--elevation-floating);
+  overflow: hidden;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.popover-shell::-webkit-scrollbar {
+  width: 6px;
+}
+
+.popover-shell::-webkit-scrollbar-thumb {
+  background: #3a3a3a;
+  border-radius: 3px;
+}
+
+.popover-section {
+  padding: var(--space-1) var(--space-1);
+}
+
+.popover-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-15) var(--space-2);
+  margin: 0 var(--space-1) var(--space-1);
+  background: var(--surface-deep);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-sm);
+}
+
+.popover-search input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  min-width: 0;
+}
+
+.popover-search input::placeholder {
+  color: var(--text-faint);
+}
+
+.popover-search .icon {
+  width: 13px;
+  height: 13px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.popover-divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: var(--space-05) var(--space-1);
+}
+
+.popover-group-label {
+  padding: var(--space-15) var(--space-2) var(--space-05);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.popover-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-15) var(--space-2);
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background-color 120ms cubic-bezier(0.4, 0, 0.2, 1),
+    color 120ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.popover-row:hover,
+.popover-row[data-active="true"] {
+  background: var(--surface-layer-03);
+}
+
+.popover-row[data-selected="true"] {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+.popover-row-details {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 1px;
+}
+
+.popover-row-tag {
+  display: inline-block;
+  font-size: 10px;
+  color: var(--text-faint);
+  background: var(--surface-deep);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 1px 6px;
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============ DESIGN.md §5.1 AgentControlChip ============ */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 28px;
+  min-width: 0;
+  flex-shrink: 1;
+  padding: 0 var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-2xl);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: background-color 120ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 120ms cubic-bezier(0.4, 0, 0.2, 1),
+    color 120ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 120ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.chip-surface-toolbar {
+  background: var(--surface-layer-02);
+  color: var(--text-primary);
+}
+
+.chip-surface-toolbar:hover {
+  background: var(--surface-layer-03);
+}
+
+.chip-surface-ghost-muted {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.chip-surface-ghost-muted:hover {
+  background: var(--surface-layer-03);
+  color: var(--text-primary);
+}
+
+.chip-surface-ghost-dim {
+  background: transparent;
+  color: var(--text-faint);
+}
+
+.chip-surface-ghost-dim:hover {
+  background: var(--surface-layer-01);
+  color: var(--text-muted);
+}
+
+.chip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.chip-icon .icon,
+.chip-icon svg {
+  width: 14px;
+  height: 14px;
+  opacity: 0.85;
+}
+
+.chip-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip-caret {
+  width: 12px !important;
+  height: 12px !important;
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.chip-open .chip-caret {
+  transform: rotate(180deg);
+}
+
+.chip-open {
+  background: var(--surface-layer-03);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.chip-active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+
+.chip-disabled,
+.chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+/* Mode chip 三色一体（DESIGN.md §2.2） */
+.chip[data-mode-tint="plan"] {
+  background: var(--mode-plan-background);
+  border-color: var(--mode-plan-border);
+  color: var(--mode-plan-solid);
+}
+
+.chip[data-mode-tint="plan"]:hover {
+  background: var(--mode-plan-border);
+}
+
+.chip[data-mode-tint="plan"].chip-open {
+  background: var(--mode-plan-border);
+  color: var(--mode-plan-solid);
+}
+
+.chip[data-mode-tint="default"] {
+  background: var(--mode-default-background);
+  border-color: var(--mode-default-border);
+  color: var(--mode-default-solid);
+}
+
+.chip[data-mode-tint="default"]:hover {
+  background: var(--mode-default-border);
+}
+
+.chip[data-mode-tint="default"].chip-open {
+  background: var(--mode-default-border);
+  color: var(--mode-default-solid);
+}
+
+.chip[data-mode-tint="custom"] {
+  background: var(--mode-custom-background);
+  border-color: var(--mode-custom-border);
+  color: var(--mode-custom-solid);
+}
+
+.chip[data-mode-tint="custom"]:hover {
+  background: var(--mode-custom-border);
+}
+
+.chip[data-mode-tint="custom"].chip-open {
+  background: var(--mode-custom-border);
+  color: var(--mode-custom-solid);
 }

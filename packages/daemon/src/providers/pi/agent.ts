@@ -12,6 +12,7 @@ import type {
   AgentPromptInput,
   AgentRunOptions,
   AgentRunResult,
+  AgentSelectOption,
   AgentSession,
   AgentSessionConfig,
   AgentStreamEvent,
@@ -25,6 +26,7 @@ import { runProviderTurn } from "../../provider-runner.js";
 import type { PiRuntimeEvent, PiRuntimeSession } from "./runtime.js";
 import { PiJsonlRpcRuntime } from "./runtime.js";
 import type { PiAgentMessage, PiAssistantContent } from "./rpc-types.js";
+import type { PiThinkingLevel } from "./rpc-types.js";
 
 const PI_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
@@ -36,6 +38,23 @@ const PI_CAPABILITIES: AgentCapabilityFlags = {
 };
 
 const DEFAULT_THINKING_LEVEL = "medium";
+
+/** 推理模型的强度档位（pi 内部会按当前模型 clamp 不支持的级别） */
+const PI_THINKING_OPTIONS: AgentSelectOption[] = [
+  { id: "off", label: "Off", description: "不额外思考" },
+  { id: "minimal", label: "Minimal", description: "轻度思考" },
+  { id: "low", label: "Low", description: "较少思考" },
+  { id: "medium", label: "Medium", description: "均衡思考", isDefault: true },
+  { id: "high", label: "High", description: "深入思考" },
+  { id: "xhigh", label: "XHigh", description: "很深入思考" },
+  { id: "max", label: "Max", description: "极限思考" },
+];
+
+function normalizePiThinkingLevel(value: string | null | undefined): PiThinkingLevel | undefined {
+  return value && PI_THINKING_OPTIONS.some((option) => option.id === value)
+    ? (value as PiThinkingLevel)
+    : undefined;
+}
 
 export class PiRpcAgentClient implements AgentClient {
   readonly provider = "pi" as const;
@@ -59,7 +78,7 @@ export class PiRpcAgentClient implements AgentClient {
     const runtimeSession = runtime.startSession({
       cwd: config.cwd,
       model: await this.normalizeModel(config.model),
-      thinkingLevel: config.modeId ?? DEFAULT_THINKING_LEVEL,
+      thinkingLevel: normalizePiThinkingLevel(config.thinkingOptionId) ?? DEFAULT_THINKING_LEVEL,
       mcpConfigPath,
     });
     const state = await runtimeSession.getState();
@@ -90,7 +109,7 @@ export class PiRpcAgentClient implements AgentClient {
     const runtimeSession = runtime.startSession({
       cwd: config.cwd,
       model: await this.normalizeModel(config.model),
-      thinkingLevel: config.modeId ?? DEFAULT_THINKING_LEVEL,
+      thinkingLevel: normalizePiThinkingLevel(config.thinkingOptionId) ?? DEFAULT_THINKING_LEVEL,
       session: sessionFile,
     });
     const state = await runtimeSession.getState();
@@ -118,9 +137,17 @@ export class PiRpcAgentClient implements AgentClient {
       }
       return models.map((model) => ({
         id: model.id,
+        // 厂商独立成 vendor 字段，UI 按 vendor 分组展示
+        vendor: model.provider,
         label: model.name ?? model.id,
         provider: "pi",
         contextWindow: model.contextWindow,
+        ...(model.reasoning
+          ? {
+              thinkingOptions: PI_THINKING_OPTIONS,
+              defaultThinkingOptionId: DEFAULT_THINKING_LEVEL,
+            }
+          : {}),
       }));
     } finally {
       await runtimeSession.close();
@@ -327,6 +354,12 @@ export class PiRpcAgentSession implements AgentSession {
       provider || (slash > 0 ? modelId.slice(0, slash) : ""),
       slash > 0 ? modelId.slice(slash + 1) : modelId,
     );
+  }
+
+  async setThinkingOption(thinkingOptionId: string | null): Promise<void> {
+    const level = normalizePiThinkingLevel(thinkingOptionId) ?? DEFAULT_THINKING_LEVEL;
+    this.config.thinkingOptionId = level;
+    await this.runtimeSession.setThinkingLevel(level);
   }
 
   private handleRuntimeEvent(event: PiRuntimeEvent): void {

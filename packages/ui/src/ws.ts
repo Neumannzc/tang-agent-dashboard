@@ -1,6 +1,7 @@
 // daemon WS 客户端：请求-响应 + 事件推送
 
 import type {
+  AgentMode,
   AgentModelDefinition,
   AgentPermissionResponse,
   AgentProvider,
@@ -113,7 +114,7 @@ export class DaemonClient {
     return this.rpc<{ providers: string[] }>("providers.list").then((r) => r.providers);
   }
 
-  createSession(params: { provider: AgentProvider; cwd: string; model?: string }): Promise<SessionSummary> {
+  createSession(params: { provider: AgentProvider; cwd: string; model?: string; thinkingOptionId?: string }): Promise<SessionSummary> {
     return this.rpc<SessionSummary>("agent.create", params);
   }
 
@@ -143,6 +144,20 @@ export class DaemonClient {
 
   setModel(sessionId: string, modelId: string): Promise<void> {
     return this.rpc("agent.model.set", { sessionId, modelId }).then(() => undefined);
+  }
+
+  modes(sessionId: string): Promise<AgentMode[]> {
+    return this.rpc<{ modes: AgentMode[] }>("agent.modes", { sessionId }).then(
+      (r) => r.modes,
+    );
+  }
+
+  setMode(sessionId: string, modeId: string): Promise<void> {
+    return this.rpc("agent.mode.set", { sessionId, modeId }).then(() => undefined);
+  }
+
+  setThinkingOption(sessionId: string, thinkingOptionId: string | null): Promise<void> {
+    return this.rpc("agent.thinking.set", { sessionId, thinkingOptionId }).then(() => undefined);
   }
 
   respondPermission(sessionId: string, requestId: string, response: AgentPermissionResponse): Promise<void> {

@@ -26,6 +26,12 @@ Thumbs.db
 *.log
 logs/
 
+# Omo tool data
+.omo/
+
+# Temporary reference clones
+tmp/
+
 # Environment
 .env
 .env.local
@@ -40,4 +46,3 @@ coverage/
 
 # Misc
 *.local
-*.log

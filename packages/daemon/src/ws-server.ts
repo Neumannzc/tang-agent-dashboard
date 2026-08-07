@@ -125,6 +125,7 @@ export class WsServer {
           cwd: request.params.cwd,
           ...(request.params.model ? { model: request.params.model } : {}),
           ...(request.params.modeId ? { modeId: request.params.modeId } : {}),
+          ...(request.params.thinkingOptionId ? { thinkingOptionId: request.params.thinkingOptionId } : {}),
           ...(request.params.systemPrompt ? { systemPrompt: request.params.systemPrompt } : {}),
         });
         return summary;
@@ -154,6 +155,11 @@ export class WsServer {
       case "agent.model.set": {
         await this.manager.setModel(request.params.sessionId, request.params.modelId);
         return { model: request.params.modelId };
+      }
+
+      case "agent.thinking.set": {
+        await this.manager.setThinkingOption(request.params.sessionId, request.params.thinkingOptionId);
+        return { thinkingOptionId: request.params.thinkingOptionId };
       }
 
       case "agent.permission.respond":

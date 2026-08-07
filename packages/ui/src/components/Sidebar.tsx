@@ -1,7 +1,11 @@
-// 侧边栏：项目（workspace）列表 + 新建 + 导入历史会话入口 + 账户区
+// 侧边栏：项目（workspace）树 + 项目下嵌套会话行 + 新建/导入/账户区
+// 仅激活 workspace 展开嵌套（NewSessionRow + SessionRow 列表）
 
 import { useState } from "react";
+import type { SessionSummary } from "@agent-console/protocol";
 import type { Workspace } from "../state.js";
+import { SessionRow } from "./SessionRow.js";
+import { NewSessionRow } from "./NewSessionRow.js";
 
 function FolderIcon() {
   return (
@@ -50,14 +54,36 @@ function projectName(cwd: string): string {
 
 export function Sidebar(props: {
   workspaces: Workspace[];
+  sessions: SessionSummary[];
+  runningBySession: Record<string, boolean>;
   activeCwd: string;
+  activeSessionId: string | null;
+  draftingCwd: string | null;
   connected: boolean;
   error: string | null;
   onCreateWorkspace: () => void;
   onSwitchWorkspace: (cwd: string) => void;
+  onSwitchSession: (sessionId: string) => void;
+  onCloseSession: (sessionId: string) => void;
+  onNewSession: (cwd: string) => void;
   onImport: () => void;
 }) {
-  const { workspaces, activeCwd, connected, error, onCreateWorkspace, onSwitchWorkspace, onImport } = props;
+  const {
+    workspaces,
+    sessions,
+    runningBySession,
+    activeCwd,
+    activeSessionId,
+    draftingCwd,
+    connected,
+    error,
+    onCreateWorkspace,
+    onSwitchWorkspace,
+    onSwitchSession,
+    onCloseSession,
+    onNewSession,
+    onImport,
+  } = props;
   const [query, setQuery] = useState("");
 
   const filtered = query.trim()
@@ -87,20 +113,49 @@ export function Sidebar(props: {
       <div className="sb-scroll">
         <div className="sec">项目</div>
         {filtered.length === 0 ? <div className="sec" style={{ paddingTop: 8 }}>暂无项目</div> : null}
-        {filtered.map((w) => (
-          <button
-            key={w.cwd}
-            className={`ws-item ${w.cwd === activeCwd ? "active" : ""}`}
-            onClick={() => onSwitchWorkspace(w.cwd)}
-          >
-            <div className="row">
-              <FolderIcon />
-              <span className="name">{projectName(w.cwd)}</span>
-              <span className="count">{w.sessionIds.length ? `${w.sessionIds.length} 会话` : "空"}</span>
+        {filtered.map((w) => {
+          const isActive = w.cwd === activeCwd;
+          return (
+            <div key={w.cwd} className="ws-block">
+              <button
+                className={`ws-item ${isActive ? "active" : ""}`}
+                onClick={() => onSwitchWorkspace(w.cwd)}
+              >
+                <div className="row">
+                  <FolderIcon />
+                  <span className="name">{projectName(w.cwd)}</span>
+                  <span className="count">{w.sessionIds.length ? `${w.sessionIds.length} 会话` : "空"}</span>
+                </div>
+                <div className="path">{w.cwd}</div>
+              </button>
+              {isActive ? (
+                <div className="ws-sessions">
+                  <NewSessionRow
+                    workspaceName={projectName(w.cwd)}
+                    active={draftingCwd === w.cwd}
+                    onNew={() => onNewSession(w.cwd)}
+                  />
+                  {w.sessionIds.map((id) => {
+                    const session = sessions.find((s) => s.sessionId === id);
+                    if (!session) {
+                      return null;
+                    }
+                    return (
+                      <SessionRow
+                        key={id}
+                        session={session}
+                        active={activeSessionId === id}
+                        running={Boolean(runningBySession[id])}
+                        onSwitch={onSwitchSession}
+                        onClose={onCloseSession}
+                      />
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
-            <div className="path">{w.cwd}</div>
-          </button>
-        ))}
+          );
+        })}
       </div>
       {error ? (
         <div className="msg-error" style={{ margin: "0 10px 8px", fontSize: 12 }}>

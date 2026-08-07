@@ -11,13 +11,26 @@ export interface AgentMode {
   description?: string;
 }
 
+export interface AgentSelectOption {
+  id: string;
+  label: string;
+  description?: string;
+  isDefault?: boolean;
+}
+
 export interface AgentModelDefinition {
   id: string;
   label?: string;
   provider: AgentProvider;
+  /** 厂商/来源名（如 "OpenCode Go"、"minimax-cn"），用于模型列表分组展示 */
+  vendor?: string;
+  description?: string;
   isDefault?: boolean;
   isSelectable?: boolean;
   contextWindow?: number;
+  /** 该模型支持的强度档位（thinking effort / reasoning effort / variant / thinking level） */
+  thinkingOptions?: AgentSelectOption[];
+  defaultThinkingOptionId?: string;
 }
 
 export interface AgentUsage {
@@ -68,7 +81,8 @@ export type AgentStreamEvent =
   | { type: "permission_requested"; provider: AgentProvider; request: AgentPermissionRequest; turnId?: string }
   | { type: "permission_resolved"; provider: AgentProvider; requestId: string; resolution: AgentPermissionResponse; turnId?: string }
   | { type: "mode_changed"; provider: AgentProvider; currentModeId: string | null; availableModes: AgentMode[] }
-  | { type: "model_changed"; provider: AgentProvider; modelId: string; modelProvider?: string };
+  | { type: "model_changed"; provider: AgentProvider; modelId: string; modelProvider?: string }
+  | { type: "thinking_changed"; provider: AgentProvider; thinkingOptionId: string | null };
 
 export function getAgentStreamEventTurnId(event: AgentStreamEvent): string | undefined {
   return "turnId" in event ? event.turnId : undefined;
@@ -120,6 +134,8 @@ export interface AgentSessionConfig {
   systemPrompt?: string;
   model?: string;
   modeId?: string;
+  /** 强度档位 id（pi: thinking level；claude: effort；codex: reasoning effort；opencode: variant） */
+  thinkingOptionId?: string;
   mcpServers?: Record<string, unknown>;
 }
 
@@ -145,6 +161,7 @@ export interface AgentSession {
   getCurrentMode?(): Promise<string | null>;
   setMode?(modeId: string): Promise<void>;
   setModel?(modelId: string): Promise<void>;
+  setThinkingOption?(thinkingOptionId: string | null): Promise<void>;
 }
 
 export interface AgentSlashCommand {

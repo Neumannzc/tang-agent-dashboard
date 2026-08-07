@@ -55,6 +55,7 @@ async function main(): Promise<void> {
     try {
       await wsServer.close();
       await manager.shutdown();
+      store.close();
       console.log("[daemon] 已关闭全部会话与子进程");
     } finally {
       process.exit(0);

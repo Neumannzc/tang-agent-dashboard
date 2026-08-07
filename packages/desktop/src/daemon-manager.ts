@@ -75,7 +75,9 @@ export class DaemonManager extends EventEmitter {
     }
     this.starting = true;
     const { command, args, nodePath } = resolveDaemonEntry();
-    const finalArgs = [...args, "--port", String(this.options.port)];
+    // node:sqlite 在 Node 22（Electron 35 内置）仍需 --experimental-sqlite flag；
+    // Node flag 必须位于入口脚本之前，升级到内置 Node ≥ 24 的 Electron 后可移除
+    const finalArgs = ["--experimental-sqlite", ...args, "--port", String(this.options.port)];
     console.log(`[desktop] 启动 daemon: ${command} ${finalArgs.join(" ")}`);
     const env = buildChildEnv({
       [DAEMON_PORT_ENV]: String(this.options.port),

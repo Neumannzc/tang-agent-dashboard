@@ -51,6 +51,7 @@ export class AgentManager {
       cwd: stored.cwd,
       model: stored.model,
       modeId: stored.modeId,
+      thinkingOptionId: stored.thinkingOptionId,
       createdAt: stored.createdAt,
       lastActiveAt: stored.lastActiveAt,
       active: this.sessions.has(stored.sessionId),
@@ -82,6 +83,7 @@ export class AgentManager {
       cwd: cwd ?? stored.cwd ?? process.cwd(),
       ...(stored.model ? { model: stored.model } : {}),
       ...(stored.modeId ? { modeId: stored.modeId } : {}),
+      ...(stored.thinkingOptionId ? { thinkingOptionId: stored.thinkingOptionId } : {}),
       ...(stored.systemPrompt ? { systemPrompt: stored.systemPrompt } : {}),
     };
     const session = await client.resumeSession(stored.handle, config);
@@ -91,6 +93,7 @@ export class AgentManager {
       cwd: config.cwd,
       model: config.model,
       modeId: config.modeId,
+      thinkingOptionId: config.thinkingOptionId,
       systemPrompt: config.systemPrompt,
       createdAt: stored.createdAt,
       handle: stored.handle,
@@ -141,6 +144,21 @@ export class AgentManager {
     const stored = this.store.get(sessionId);
     if (stored) {
       this.store.put({ ...stored, model: modelId });
+    }
+  }
+
+  async setThinkingOption(sessionId: string, thinkingOptionId: string | null): Promise<void> {
+    const session = this.getSession(sessionId);
+    if (!session.setThinkingOption) {
+      throw new Error("当前 provider 不支持切换强度");
+    }
+    await session.setThinkingOption(thinkingOptionId);
+    const stored = this.store.get(sessionId);
+    if (stored) {
+      this.store.put({
+        ...stored,
+        ...(thinkingOptionId ? { thinkingOptionId } : {}),
+      });
     }
   }
 
@@ -205,6 +223,7 @@ export class AgentManager {
       cwd: config.cwd,
       model: config.model,
       modeId: config.modeId,
+      thinkingOptionId: config.thinkingOptionId,
       createdAt: createdAt ?? Date.now(),
       active: true,
       ...(handle ? { handle } : {}),
@@ -215,6 +234,7 @@ export class AgentManager {
       cwd: config.cwd,
       model: config.model,
       modeId: config.modeId,
+      thinkingOptionId: config.thinkingOptionId,
       systemPrompt: config.systemPrompt,
       createdAt: summary.createdAt,
       ...(handle ? { handle } : {}),

@@ -1,20 +1,22 @@
 // Tang Agent Dashboard 主界面：workspace（项目）→ 会话 两级组织
-// 设计：DESIGN-SYSTEM.md v1（唯一真源 design/preview.html）
+// 设计：DESIGN.md v2（方案 A：Composer 工具条集中控制 + 单 sidebar 树 + popover 化）
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AgentPermissionRequest, AgentProvider, SessionSummary } from "@agent-console/protocol";
+import type { AgentMode, AgentModelDefinition, AgentPermissionRequest, AgentProvider, SessionSummary } from "@agent-console/protocol";
 import { DaemonClient, resolveDaemonWsUrl } from "./ws.js";
 import { applyEvent, buildWorkspaces, sessionCwd } from "./state.js";
 import type { ThreadItem } from "./state.js";
 import { Sidebar } from "./components/Sidebar.js";
-import { TabsRow } from "./components/TabsRow.js";
 import { Topbar } from "./components/Topbar.js";
 import { Timeline } from "./components/Timeline.js";
 import { Composer } from "./components/Composer.js";
-import { NewWorkspaceModal, NewSessionModal, ImportModal } from "./components/Modals.js";
+import { NewWorkspaceModal, ImportModal } from "./components/Modals.js";
 
 const KNOWN_CWDS_KEY = "tang-ai-chat:knownCwds";
 const ACTIVE_KEY = "tang-ai-chat:active";
+
+/** draft 会话 stub：未建会话前的临时 SessionSummary（sessionId 固定 "draft"） */
+const DRAFT_SESSION_ID = "draft";
 
 function loadKnownCwds(): string[] {
   try {
@@ -24,6 +26,14 @@ function loadKnownCwds(): string[] {
   } catch {
     return [];
   }
+}
+
+interface DraftState {
+  cwd: string;
+  provider: AgentProvider;
+  model: string | null;
+  thinkingOptionId: string | null;
+  modeId: string | null;
 }
 
 export function App() {
@@ -37,13 +47,20 @@ export function App() {
   const [timelines, setTimelines] = useState<Record<string, ThreadItem[]>>({});
   const [running, setRunning] = useState<Record<string, boolean>>({});
   const [knownCwds, setKnownCwds] = useState<string[]>(loadKnownCwds);
-  const [modal, setModal] = useState<null | "workspace" | "session" | "import">(null);
+  const [modal, setModal] = useState<null | "workspace" | "import">(null);
+  const [models, setModels] = useState<AgentModelDefinition[]>([]);
+  const [modesBySession, setModesBySession] = useState<Record<string, AgentMode[]>>({});
+  const [currentModeIdBySession, setCurrentModeIdBySession] = useState<Record<string, string | null>>({});
+  const [draft, setDraft] = useState<DraftState | null>(null);
+  const [focusSignal, setFocusSignal] = useState(0);
   const clientRef = useRef(client);
   clientRef.current = client;
   const timelinesRef = useRef<Record<string, ThreadItem[]>>({});
   const sessionsRef = useRef<SessionSummary[]>([]);
   const activeSessionIdRef = useRef<string | null>(null);
   const activeWorkspaceRef = useRef<string | null>(null);
+  const draftRef = useRef<DraftState | null>(null);
+  const modesCacheRef = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
     timelinesRef.current = timelines;
@@ -54,6 +71,9 @@ export function App() {
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
   }, [activeSessionId]);
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
 
   // ---------- 连接 daemon（含断线自动重连） ----------
 
@@ -106,7 +126,13 @@ export function App() {
     client.onPush = (push) => {
       switch (push.type) {
         case "agent.event": {
-          const result = applyEvent(timelinesRef.current[push.sessionId] ?? [], push.event);
+          const event = push.event;
+          // daemon 补发 mode_changed 时同步（§6 已知缺口，UI 已用乐观更新兜底）
+          if (event.type === "mode_changed") {
+            setCurrentModeIdBySession((m) => ({ ...m, [push.sessionId]: event.currentModeId }));
+            setModesBySession((m) => ({ ...m, [push.sessionId]: event.availableModes }));
+          }
+          const result = applyEvent(timelinesRef.current[push.sessionId] ?? [], event);
           timelinesRef.current = {
             ...timelinesRef.current,
             [push.sessionId]: result.list,
@@ -167,20 +193,18 @@ export function App() {
   }, [workspaces, activeCwd]);
 
   const effectiveSessionId = useMemo(() => {
+    if (draft) {
+      return null;
+    }
     if (activeWorkspace && activeWorkspace.sessionIds.includes(activeSessionId ?? "")) {
       return activeSessionId;
     }
     return activeWorkspace?.sessionIds[0] ?? null;
-  }, [activeWorkspace, activeSessionId]);
+  }, [activeWorkspace, activeSessionId, draft]);
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.sessionId === effectiveSessionId) ?? null,
     [sessions, effectiveSessionId],
-  );
-
-  const activeWorkspaceSessions = useMemo(
-    () => (activeWorkspace ? activeWorkspace.sessionIds.map((id) => sessions.find((s) => s.sessionId === id)!).filter(Boolean) : []),
-    [activeWorkspace, sessions],
   );
 
   const timeline = effectiveSessionId ? (timelines[effectiveSessionId] ?? []) : [];
@@ -195,6 +219,79 @@ export function App() {
       localStorage.setItem(ACTIVE_KEY, activeWorkspace.cwd);
     }
   }, [activeWorkspace]);
+
+  // ---------- 模型 / 模式数据（按激活上下文拉取） ----------
+
+  const activeProvider = draft ? draft.provider : (activeSession?.provider ?? null);
+
+  useEffect(() => {
+    if (!activeProvider) {
+      setModels([]);
+      return;
+    }
+    let cancelled = false;
+    clientRef.current
+      .models(activeProvider)
+      .then((list) => {
+        if (!cancelled) {
+          setModels(list);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setModels([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProvider]);
+
+  useEffect(() => {
+    const id = effectiveSessionId;
+    if (!id || modesCacheRef.current[id]) {
+      return;
+    }
+    modesCacheRef.current = { ...modesCacheRef.current, [id]: true };
+    let cancelled = false;
+    clientRef.current
+      .modes(id)
+      .then((list) => {
+        if (!cancelled) {
+          setModesBySession((m) => ({ ...m, [id]: list }));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setModesBySession((m) => ({ ...m, [id]: [] }));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveSessionId]);
+
+  const activeModes = effectiveSessionId ? (modesBySession[effectiveSessionId] ?? []) : [];
+  const effectiveModeId = effectiveSessionId
+    ? (currentModeIdBySession[effectiveSessionId] ?? activeSession?.modeId ?? null)
+    : null;
+
+  // draft 会话 stub：让 ModelPopover / ThinkingPopover 在未建会话前可配置
+  const draftSession = useMemo<SessionSummary | null>(() => {
+    if (!draft) {
+      return null;
+    }
+    return {
+      sessionId: DRAFT_SESSION_ID,
+      provider: draft.provider,
+      cwd: draft.cwd,
+      model: draft.model ?? undefined,
+      thinkingOptionId: draft.thinkingOptionId ?? undefined,
+      modeId: draft.modeId ?? undefined,
+      createdAt: Date.now(),
+      active: false,
+    };
+  }, [draft]);
 
   // ---------- 动作 ----------
 
@@ -263,6 +360,56 @@ export function App() {
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, []);
 
+  /** draft 首条消息：先建会话，再追加用户消息 + prompt */
+  const handleDraftSend = useCallback(
+    (text: string) => {
+      const d = draftRef.current;
+      if (!d || !text.trim()) {
+        return;
+      }
+      const client = clientRef.current;
+      client
+        .createSession({
+          provider: d.provider,
+          cwd: d.cwd,
+          ...(d.model ? { model: d.model } : {}),
+          ...(d.thinkingOptionId ? { thinkingOptionId: d.thinkingOptionId } : {}),
+          ...(d.modeId ? { modeId: d.modeId } : {}),
+        })
+        .then((session) => {
+          handleCreated(session);
+          setDraft(null);
+          const list = timelinesRef.current[session.sessionId] ?? [];
+          const next = [
+            ...list,
+            {
+              type: "user_message" as const,
+              text,
+              key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            },
+          ];
+          timelinesRef.current = { ...timelinesRef.current, [session.sessionId]: next };
+          setTimelines(timelinesRef.current);
+          client.prompt(session.sessionId, text).catch((err) =>
+            setError(err instanceof Error ? err.message : String(err)),
+          );
+        })
+        .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+    },
+    [handleCreated],
+  );
+
+  const handleSend = useCallback(
+    (text: string) => {
+      if (draftRef.current) {
+        handleDraftSend(text);
+      } else {
+        handleUserMessage(text);
+      }
+    },
+    [handleDraftSend, handleUserMessage],
+  );
+
   const handleInterrupt = useCallback(() => {
     const sessionId = activeSessionIdRef.current;
     if (!sessionId) {
@@ -296,6 +443,7 @@ export function App() {
       addKnownCwd(cwd);
       setActiveCwd(cwd);
       setActiveSessionId(null);
+      setDraft(null);
       if (provider) {
         try {
           const session = await clientRef.current.createSession({ provider, cwd });
@@ -308,26 +456,87 @@ export function App() {
     [addKnownCwd, handleCreated],
   );
 
-  const handleCreateSession = useCallback(
-    async (provider: AgentProvider, model: string | null) => {
-      const cwd = activeWorkspaceRef.current;
+  /** NewSessionRow → 进入 draft（再次点击同 workspace 取消） */
+  const handleNewSessionDraft = useCallback(
+    (cwd: string) => {
       if (!cwd) {
         return;
       }
-      setModal(null);
-      try {
-        const session = await clientRef.current.createSession({
-          provider,
-          cwd,
-          ...(model ? { model } : {}),
-        });
-        handleCreated(session);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
+      setActiveCwd(cwd);
+      setActiveSessionId(null);
+      setDraft((d) =>
+        d && d.cwd === cwd
+          ? null
+          : { cwd, provider: (providers[0] ?? "pi") as AgentProvider, model: null, thinkingOptionId: null, modeId: null },
+      );
+      setFocusSignal((n) => n + 1);
     },
-    [handleCreated],
+    [providers],
   );
+
+  // ---------- 工具条 pick 回调（draft 写本地配置；会话走 RPC） ----------
+
+  const handlePickModel = useCallback((modelId: string, defaultThinkingOptionId?: string) => {
+    if (draftRef.current) {
+      setDraft((d) => (d ? { ...d, model: modelId, thinkingOptionId: defaultThinkingOptionId ?? null } : d));
+      return;
+    }
+    const sessionId = activeSessionIdRef.current;
+    if (!sessionId) {
+      return;
+    }
+    // 本地乐观更新 + 真实下发 daemon（agent.model.set）
+    setSessions((list) =>
+      list.map((s) => (s.sessionId === sessionId ? { ...s, model: modelId } : s)),
+    );
+    clientRef.current.setModel(sessionId, modelId).catch((err) =>
+      setError(err instanceof Error ? err.message : String(err)),
+    );
+    // 切模型后强度重置为新模型默认档（当前档位对新模型可能无效）
+    if (defaultThinkingOptionId !== undefined) {
+      setSessions((list) =>
+        list.map((s) =>
+          s.sessionId === sessionId ? { ...s, thinkingOptionId: defaultThinkingOptionId } : s,
+        ),
+      );
+      clientRef.current.setThinkingOption(sessionId, defaultThinkingOptionId).catch((err) =>
+        setError(err instanceof Error ? err.message : String(err)),
+      );
+    }
+  }, []);
+
+  const handlePickThinking = useCallback((thinkingOptionId: string | null) => {
+    if (draftRef.current) {
+      setDraft((d) => (d ? { ...d, thinkingOptionId } : d));
+      return;
+    }
+    const sessionId = activeSessionIdRef.current;
+    if (!sessionId) {
+      return;
+    }
+    setSessions((list) =>
+      list.map((s) =>
+        s.sessionId === sessionId
+          ? { ...s, thinkingOptionId: thinkingOptionId ?? undefined }
+          : s,
+      ),
+    );
+    clientRef.current.setThinkingOption(sessionId, thinkingOptionId).catch((err) =>
+      setError(err instanceof Error ? err.message : String(err)),
+    );
+  }, []);
+
+  const handlePickMode = useCallback((modeId: string) => {
+    const sessionId = activeSessionIdRef.current;
+    if (!sessionId) {
+      return;
+    }
+    // 乐观更新：daemon 未实现 agent.mode.set（HANDOFF §6），失败静默，chip 保留本地状态
+    setCurrentModeIdBySession((m) => ({ ...m, [sessionId]: modeId }));
+    clientRef.current.setMode(sessionId, modeId).catch(() => {
+      // 静默：见 docs/UI-REDESIGN-HANDOFF.md §6
+    });
+  }, []);
 
   // ---------- 渲染 ----------
 
@@ -335,46 +544,30 @@ export function App() {
     <div className="app">
       <Sidebar
         workspaces={workspaces}
+        sessions={sessions}
+        runningBySession={running}
         activeCwd={activeWorkspace?.cwd ?? ""}
+        activeSessionId={effectiveSessionId}
+        draftingCwd={draft?.cwd ?? null}
         connected={connected}
         error={error}
         onCreateWorkspace={() => setModal("workspace")}
         onSwitchWorkspace={(cwd) => {
           setActiveCwd(cwd);
           setActiveSessionId(null);
+          setDraft(null);
         }}
+        onSwitchSession={(id) => void handleSwitchSession(id)}
+        onCloseSession={(id) => void handleCloseSession(id)}
+        onNewSession={handleNewSessionDraft}
         onImport={() => setModal("import")}
       />
       <main className="main">
-        <Topbar
-          session={activeSession}
-          cwd={activeWorkspace?.cwd ?? ""}
-          client={client}
-          onPickModel={(model) => {
-            const sessionId = activeSessionIdRef.current;
-            if (!sessionId) {
-              return;
-            }
-            // 本地乐观更新 + 真实下发 daemon（agent.model.set）
-            setSessions((list) =>
-              list.map((s) => (s.sessionId === sessionId ? { ...s, model } : s)),
-            );
-            clientRef.current.setModel(sessionId, model).catch((err) =>
-              setError(err instanceof Error ? err.message : String(err)),
-            );
-          }}
-        />
-        <TabsRow
-          sessions={activeWorkspaceSessions}
-          activeSessionId={effectiveSessionId}
-          onSwitch={(id) => void handleSwitchSession(id)}
-          onClose={(id) => void handleCloseSession(id)}
-          onNew={() => setModal("session")}
-        />
-        {activeSession ? (
+        <Topbar session={activeSession} cwd={activeWorkspace?.cwd ?? ""} />
+        {activeSession || draft ? (
           <Timeline
             items={timeline}
-            provider={activeSession.provider}
+            provider={activeSession?.provider ?? draft?.provider ?? "pi"}
             running={isRunning}
             onRespondPermission={handleRespondPermission}
           />
@@ -382,14 +575,23 @@ export function App() {
           <EmptyProject
             cwd={activeWorkspace?.cwd ?? ""}
             hasAny={workspaces.length > 0}
-            onNewSession={() => setModal("session")}
+            onNewSession={() => handleNewSessionDraft(activeWorkspace?.cwd ?? "")}
             onNewWorkspace={() => setModal("workspace")}
           />
         )}
         <Composer
-          session={activeSession}
+          session={draft ? draftSession : activeSession}
           running={isRunning}
-          onSend={handleUserMessage}
+          drafting={Boolean(draft)}
+          models={models}
+          modes={activeModes}
+          currentModeId={effectiveModeId}
+          defaultModeId={null}
+          focusSignal={focusSignal}
+          onPickModel={handlePickModel}
+          onPickMode={handlePickMode}
+          onPickThinking={handlePickThinking}
+          onSend={handleSend}
           onInterrupt={handleInterrupt}
         />
       </main>
@@ -399,15 +601,6 @@ export function App() {
           providers={providers}
           onClose={() => setModal(null)}
           onConfirm={(cwd, provider) => void handleCreateWorkspace(cwd, provider)}
-        />
-      ) : null}
-      {modal === "session" ? (
-        <NewSessionModal
-          providers={providers}
-          cwd={activeWorkspace?.cwd ?? ""}
-          client={client}
-          onClose={() => setModal(null)}
-          onConfirm={(provider, model) => void handleCreateSession(provider, model)}
         />
       ) : null}
       {modal === "import" ? (

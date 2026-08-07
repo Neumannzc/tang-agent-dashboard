@@ -12,6 +12,7 @@ import type {
   AgentPromptInput,
   AgentRunOptions,
   AgentRunResult,
+  AgentSelectOption,
   AgentSession,
   AgentSessionConfig,
   AgentStreamEvent,
@@ -31,6 +32,31 @@ const CLAUDE_CAPABILITIES: AgentCapabilityFlags = {
   supportsReasoningStream: true,
   supportsDynamicModes: true,
 };
+
+/** 强度档位标签（SDK ModelInfo.supportedEffortLevels 的展示名） */
+const CLAUDE_EFFORT_LABELS: Record<string, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra High",
+  max: "Max",
+};
+
+function buildClaudeThinkingOptions(levels: readonly string[]): AgentSelectOption[] {
+  const preferredDefault = levels.includes("medium") ? "medium" : levels[0];
+  return levels.map((level) => ({
+    id: level,
+    label: CLAUDE_EFFORT_LABELS[level] ?? level,
+    ...(level === preferredDefault ? { isDefault: true } : {}),
+  }));
+}
+
+/** claude 运行时列表失败时的兜底（别名始终有效） */
+const CLAUDE_FALLBACK_MODELS: AgentModelDefinition[] = [
+  { id: "sonnet", label: "Claude Sonnet", provider: "claude" },
+  { id: "opus", label: "Claude Opus", provider: "claude" },
+  { id: "haiku", label: "Claude Haiku", provider: "claude" },
+];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
@@ -72,11 +98,52 @@ export class ClaudeAgentClient implements AgentClient {
   }
 
   async fetchModels(): Promise<AgentModelDefinition[]> {
-    return [
-      { id: "sonnet", label: "Claude Sonnet", provider: "claude" },
-      { id: "opus", label: "Claude Opus", provider: "claude" },
-      { id: "haiku", label: "Claude Haiku", provider: "claude" },
-    ];
+    // 起一个空 prompt 会话拿到 init 握手后即可调 supportedModels()，
+    // 不发送实际 prompt，不消耗 token；列表反映用户真实环境（env/代理/设置）
+    const claudeQuery = query({
+      prompt: "",
+      options: {
+        cwd: process.cwd(),
+        permissionMode: "default",
+        includePartialMessages: false,
+      },
+    });
+    const timeout = setTimeout(() => {
+      void claudeQuery.return().catch(() => undefined);
+    }, 20_000);
+    try {
+      for await (const message of claudeQuery) {
+        if (message.type === "system" && message.subtype === "init") {
+          break;
+        }
+        if (message.type === "result") {
+          break;
+        }
+      }
+      const models = await claudeQuery.supportedModels();
+      if (!Array.isArray(models) || models.length === 0) {
+        return CLAUDE_FALLBACK_MODELS;
+      }
+      return models.map((model) => ({
+        id: model.value,
+        label: model.displayName,
+        provider: "claude",
+        description: model.description || undefined,
+        ...(model.supportsEffort && model.supportedEffortLevels?.length
+          ? {
+              thinkingOptions: buildClaudeThinkingOptions(model.supportedEffortLevels),
+              defaultThinkingOptionId: model.supportedEffortLevels.includes("medium")
+                ? "medium"
+                : model.supportedEffortLevels[0],
+            }
+          : {}),
+      }));
+    } catch {
+      return CLAUDE_FALLBACK_MODELS;
+    } finally {
+      clearTimeout(timeout);
+      await claudeQuery.return().catch(() => undefined);
+    }
   }
 
   async isAvailable(): Promise<boolean> {
@@ -134,6 +201,9 @@ export class ClaudeAgentSession implements AgentSession {
       options: {
         cwd: this.config.cwd,
         ...(this.config.model ? { model: this.config.model } : {}),
+        ...(this.config.thinkingOptionId
+          ? { effort: this.config.thinkingOptionId as "low" | "medium" | "high" | "xhigh" | "max" }
+          : {}),
         ...(this.config.systemPrompt ? { systemPrompt: this.config.systemPrompt } : {}),
         ...(this.sessionId && !this.sessionId.startsWith("claude-")
           ? { resume: this.sessionId }
@@ -219,6 +289,11 @@ export class ClaudeAgentSession implements AgentSession {
   async setModel(modelId: string): Promise<void> {
     // 模型在 query options 里按回合生效，更新 config 供后续回合使用
     this.config.model = modelId;
+  }
+
+  async setThinkingOption(thinkingOptionId: string | null): Promise<void> {
+    // effort 在 query options 里按回合生效，更新 config 供后续回合使用
+    this.config.thinkingOptionId = thinkingOptionId ?? undefined;
   }
 
   async close(): Promise<void> {

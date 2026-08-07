@@ -1,8 +1,8 @@
-// 模态：新建 workspace / 新建会话 / 导入历史会话（二期占位）
+// 模态：新建 workspace / 导入历史会话（二期占位）
+// "新建会话" 已改 inline draft（NewSessionRow → Composer），不再走 Modal
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { AgentProvider } from "@agent-console/protocol";
-import type { DaemonClient } from "../ws.js";
 import { PROVIDER_META, providerMeta } from "../theme.js";
 
 function CloseButton({ onClose }: { onClose: () => void }) {
@@ -120,83 +120,6 @@ export function NewWorkspaceModal(props: {
       </div>
     </div>
   );
-}
-
-// ---------- 新建会话（当前项目下） ----------
-
-export function NewSessionModal(props: {
-  providers: string[];
-  cwd: string;
-  client: DaemonClient;
-  onClose: () => void;
-  onConfirm: (provider: AgentProvider, model: string | null) => void;
-}) {
-  const { providers, cwd, client, onClose, onConfirm } = props;
-  const [provider, setProvider] = useState<AgentProvider>("pi");
-  const [models, setModels] = useState<string[]>([]);
-  const [model, setModel] = useState("");
-
-  useEffect(() => {
-    setModels([]);
-    setModel("");
-    client
-      .models(provider)
-      .then((list) => setModels(list.map((m) => m.id)))
-      .catch(() => setModels([]));
-  }, [provider, client]);
-
-  const confirm = () => {
-    if (!providers.includes(provider)) {
-      return;
-    }
-    onConfirm(provider, model.trim() || null);
-  };
-
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          在「{cwdName(cwd)}」下新建会话
-          <CloseButton onClose={onClose} />
-        </div>
-        <div className="modal-body">
-          <div className="field">
-            <span className="field-label">Agent</span>
-            <ProviderCards providers={providers} selected={provider} onPick={(id) => setProvider(id as AgentProvider)} />
-          </div>
-          <div className="field">
-            <span className="field-label">模型</span>
-            <select value={model} onChange={(e) => setModel(e.target.value)}>
-              <option value="">默认</option>
-              {models.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="modal-hint">
-          会话将挂载到当前 workspace：
-          <span style={{ fontFamily: "var(--mono)" }}>{cwd}</span>
-        </div>
-        <div className="modal-foot">
-          <button className="btn btn-danger" onClick={onClose}>
-            取消
-          </button>
-          <button className="btn btn-primary" onClick={confirm}>
-            创建会话
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function cwdName(cwd: string): string {
-  const trimmed = cwd.replace(/\/+$/, "");
-  const parts = trimmed.split("/");
-  return parts[parts.length - 1] || trimmed;
 }
 
 // ---------- 导入历史会话（UI 定稿；扫描数据源二期实现） ----------

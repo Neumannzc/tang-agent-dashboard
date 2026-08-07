@@ -12,6 +12,7 @@ import type {
   AgentPromptInput,
   AgentRunOptions,
   AgentRunResult,
+  AgentSelectOption,
   AgentSession,
   AgentSessionConfig,
   AgentStreamEvent,
@@ -32,6 +33,42 @@ const CODEX_CAPABILITIES: AgentCapabilityFlags = {
   supportsReasoningStream: true,
   supportsDynamicModes: true,
 };
+
+/** codex model/list 条目（camelCase 已由 app-server 序列化） */
+interface CodexModelEntry {
+  id: string;
+  displayName?: string;
+  description?: string;
+  isDefault?: boolean;
+  hidden?: boolean;
+  defaultReasoningEffort?: string;
+  supportedReasoningEfforts?: Array<{ reasoningEffort?: string; description?: string }>;
+}
+
+function isCodexModelEntry(value: unknown): value is CodexModelEntry {
+  return typeof value === "object" && value !== null && typeof (value as CodexModelEntry).id === "string";
+}
+
+function buildCodexThinkingOptions(model: CodexModelEntry): AgentSelectOption[] | undefined {
+  const entries = Array.isArray(model.supportedReasoningEfforts)
+    ? model.supportedReasoningEfforts
+        .map((entry) => entry?.reasoningEffort)
+        .filter((id): id is string => typeof id === "string" && id.length > 0)
+    : [];
+  if (entries.length === 0) {
+    return undefined;
+  }
+  const options = entries.map((id) => ({
+    id,
+    label: id,
+    ...(id === model.defaultReasoningEffort ? { isDefault: true } : {}),
+  }));
+  // 默认档不在列表时补一项，保证 UI 总能高亮当前默认
+  if (model.defaultReasoningEffort && !entries.includes(model.defaultReasoningEffort)) {
+    options.unshift({ id: model.defaultReasoningEffort, label: model.defaultReasoningEffort, isDefault: true });
+  }
+  return options;
+}
 
 const TURN_START_TIMEOUT_MS = 90 * 1000;
 const MODE_PRESETS: Record<string, { approvalPolicy: string; sandbox: string }> = {
@@ -126,12 +163,52 @@ export class CodexAppServerAgentClient implements AgentClient {
   }
 
   async fetchModels(): Promise<AgentModelDefinition[]> {
-    return [
-      { id: "gpt-5.4", provider: "codex" },
-      { id: "gpt-5.4-mini", provider: "codex" },
-      { id: "gpt-5.1-codex", provider: "codex" },
-      { id: "o3", provider: "codex" },
-    ];
+    // 复用 app-server：initialize 后调 model/list，返回 codex 完整模型目录
+    const child = spawnAppServer(process.cwd(), this.options.command);
+    const client = new CodexAppServerClient(child);
+    try {
+      await client.request("initialize", {
+        clientInfo: { name: "agent-console", title: "Agent Console", version: "0.1.0" },
+        capabilities: { experimentalApi: true, mcpServerOpenaiFormElicitation: true },
+      });
+      client.notify("initialized", {});
+      const entries: CodexModelEntry[] = [];
+      let cursor: string | undefined;
+      do {
+        const raw = await client.request("model/list", {
+          ...(cursor ? { cursor } : {}),
+        });
+        const response = isRecord(raw) ? raw : {};
+        if (Array.isArray(response.data)) {
+          for (const entry of response.data) {
+            if (isCodexModelEntry(entry)) {
+              entries.push(entry);
+            }
+          }
+        }
+        cursor =
+          typeof response.nextCursor === "string" && response.nextCursor.length > 0
+            ? response.nextCursor
+            : undefined;
+      } while (cursor);
+      return entries
+        .filter((model) => model.hidden !== true)
+        .map((model) => ({
+          id: model.id,
+          label: model.displayName || model.id,
+          provider: "codex" as const,
+          description: model.description || undefined,
+          isDefault: model.isDefault === true,
+          ...(buildCodexThinkingOptions(model)
+            ? {
+                thinkingOptions: buildCodexThinkingOptions(model),
+                defaultThinkingOptionId: model.defaultReasoningEffort,
+              }
+            : {}),
+        }));
+    } finally {
+      await client.dispose();
+    }
   }
 
   async isAvailable(): Promise<boolean> {
@@ -224,6 +301,9 @@ export class CodexAppServerAgentSession implements AgentSession {
     };
     if (this.config.model) {
       params.model = this.config.model;
+    }
+    if (this.config.thinkingOptionId) {
+      params.effort = this.config.thinkingOptionId;
     }
     if (this.config.systemPrompt) {
       params.developerInstructions = this.config.systemPrompt;
@@ -332,6 +412,11 @@ export class CodexAppServerAgentSession implements AgentSession {
   async setModel(modelId: string): Promise<void> {
     // 模型在 turn/start 参数里按回合生效，更新 config 供后续回合使用
     this.config.model = modelId;
+  }
+
+  async setThinkingOption(thinkingOptionId: string | null): Promise<void> {
+    // effort 在 turn/start 参数里按回合生效，更新 config 供后续回合使用
+    this.config.thinkingOptionId = thinkingOptionId ?? undefined;
   }
 
   /** 建立 codex 线程并锁定会话 id（createSession 时提前调用） */

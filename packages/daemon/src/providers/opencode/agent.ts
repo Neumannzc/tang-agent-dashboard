@@ -17,13 +17,14 @@ import type {
   AgentPromptInput,
   AgentRunOptions,
   AgentRunResult,
+  AgentSelectOption,
   AgentSession,
   AgentSessionConfig,
   AgentStreamEvent,
   AgentTimelineItem,
   ToolCallDetail,
 } from "@agent-console/protocol";
-import { existsSync, readFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { isCommandAvailable } from "../../executable-resolution.js";
@@ -39,6 +40,9 @@ const OPENCODE_CAPABILITIES: AgentCapabilityFlags = {
   supportsReasoningStream: true,
   supportsDynamicModes: true,
 };
+
+/** 模型目录查询用中性目录（同 server cwd），避免索引用户项目 */
+const OPENCODE_CATALOG_DIR = path.join(homedir(), ".agent-console", "opencode-home");
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
@@ -102,9 +106,37 @@ export class OpenCodeAgentClient implements AgentClient {
   }
 
   async fetchModels(): Promise<AgentModelDefinition[]> {
-    // opencode server 运行在中性 home 目录（PLAN 风险 #1），模型目录来自用户配置
-    // 直接解析用户 ~/.config/opencode/opencode.json 的 provider.models
-    return readUserOpencodeModels();
+    // 通过运行中的 opencode server 拉取完整模型目录（含 models.dev / env / auth 全部来源）
+    const acquisition = await OpenCodeServerManager.getInstance().acquire();
+    try {
+      mkdirSync(OPENCODE_CATALOG_DIR, { recursive: true });
+      const client = createOpencodeClient({
+        baseUrl: acquisition.server.url,
+        directory: OPENCODE_CATALOG_DIR,
+      });
+      const response = await client.provider.list({ directory: OPENCODE_CATALOG_DIR });
+      if (response.error) {
+        throw new Error(`Failed to fetch OpenCode providers: ${JSON.stringify(response.error)}`);
+      }
+      const providers = response.data;
+      if (!providers) {
+        return [];
+      }
+      const connectedProviderIds = new Set(providers.connected);
+      const models: AgentModelDefinition[] = [];
+      for (const provider of providers.all) {
+        // 仅展示已连接或 api 源的 provider（未认证的 env/config provider 不可用）
+        if (!connectedProviderIds.has(provider.id) && provider.source !== "api") {
+          continue;
+        }
+        for (const [modelId, model] of Object.entries(provider.models)) {
+          models.push(buildOpenCodeModelDefinition(provider, modelId, model));
+        }
+      }
+      return models;
+    } finally {
+      acquisition.release();
+    }
   }
 
   async isAvailable(): Promise<boolean> {
@@ -165,6 +197,7 @@ export class OpenCodeAgentSession implements AgentSession {
     const system = this.config.systemPrompt;
     const model = this.config.model;
     const agent = this.config.modeId;
+    const variant = this.config.thinkingOptionId;
 
     // promptAsync 立即返回，事件通过 SSE 流推送
     const response = await this.client.session.promptAsync({
@@ -173,6 +206,7 @@ export class OpenCodeAgentSession implements AgentSession {
       parts,
       ...(system ? { system } : {}),
       ...(model ? { model: parseModelRef(model) } : {}),
+      ...(variant ? { variant } : {}),
       ...(agent ? { agent } : {}),
     });
     if (response.error) {
@@ -231,6 +265,11 @@ export class OpenCodeAgentSession implements AgentSession {
   async setModel(modelId: string): Promise<void> {
     // 模型在 promptAsync 参数里按回合生效，更新 config 供后续回合使用
     this.config.model = modelId;
+  }
+
+  async setThinkingOption(thinkingOptionId: string | null): Promise<void> {
+    // variant 在 promptAsync 参数里按回合生效，更新 config 供后续回合使用
+    this.config.thinkingOptionId = thinkingOptionId ?? undefined;
   }
 
   async interrupt(): Promise<void> {
@@ -572,28 +611,35 @@ function mapOpenCodeToolDetail(name: string, part: OpenCodePart): ToolCallDetail
   return { kind: "unknown", raw: part };
 }
 
-/** 读取用户 opencode 配置中的模型目录（provider/models） */
-function readUserOpencodeModels(): AgentModelDefinition[] {
-  const configPath = path.join(homedir(), ".config", "opencode", "opencode.json");
-  try {
-    if (!existsSync(configPath)) {
-      return [];
-    }
-    const raw = readFileSync(configPath, "utf8");
-    const parsed = JSON.parse(raw) as { provider?: Record<string, { models?: Record<string, { name?: string }> }> };
-    const providers = parsed.provider ?? {};
-    const models: AgentModelDefinition[] = [];
-    for (const [providerID, providerConfig] of Object.entries(providers)) {
-      for (const modelID of Object.keys(providerConfig?.models ?? {})) {
-        models.push({
-          id: `${providerID}/${modelID}`,
-          label: providerConfig.models?.[modelID]?.name ?? modelID,
-          provider: "opencode",
-        });
-      }
-    }
-    return models;
-  } catch {
-    return [];
-  }
+/** 构建 opencode 模型定义（provider.list 数据源） */
+function buildOpenCodeModelDefinition(
+  provider: { id: string; name: string },
+  modelId: string,
+  model: {
+    name?: string;
+    family?: string;
+    capabilities?: { reasoning?: boolean };
+    limit?: { context?: number };
+    variants?: Record<string, unknown>;
+  },
+): AgentModelDefinition {
+  const rawVariants = model.variants ? Object.keys(model.variants) : [];
+  const thinkingOptions: AgentSelectOption[] | undefined =
+    rawVariants.length > 0
+      ? rawVariants.map((id, index) => ({
+          id,
+          label: id,
+          ...(index === 0 ? { isDefault: true } : {}),
+        }))
+      : undefined;
+  return {
+    provider: "opencode",
+    id: `${provider.id}/${modelId}`,
+    // 厂商独立成 vendor 字段（可读名），UI 按 vendor 分组展示
+    vendor: provider.name,
+    label: model.name ?? modelId,
+    ...(model.family ? { description: model.family } : {}),
+    ...(typeof model.limit?.context === "number" ? { contextWindow: model.limit.context } : {}),
+    ...(thinkingOptions ? { thinkingOptions, defaultThinkingOptionId: rawVariants[0] } : {}),
+  };
 }
