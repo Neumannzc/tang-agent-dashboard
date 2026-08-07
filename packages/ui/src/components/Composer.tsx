@@ -9,11 +9,13 @@ export function Composer(props: {
   session: SessionSummary | null;
   running: boolean;
   drafting: boolean;
+  providers: string[];
   models: AgentModelDefinition[];
   modes: AgentMode[];
   currentModeId: string | null;
   defaultModeId?: string | null;
   focusSignal?: number;
+  onPickProvider: (provider: string) => void;
   onPickModel: (modelId: string, defaultThinkingOptionId?: string) => void;
   onPickMode: (modeId: string) => void;
   onPickThinking: (thinkingOptionId: string | null) => void;
@@ -24,11 +26,13 @@ export function Composer(props: {
     session,
     running,
     drafting,
+    providers,
     models,
     modes,
     currentModeId,
     defaultModeId,
     focusSignal = 0,
+    onPickProvider,
     onPickModel,
     onPickMode,
     onPickThinking,
@@ -79,12 +83,15 @@ export function Composer(props: {
           />
           <ComposerToolbar
             session={session}
+            drafting={drafting}
+            providers={providers}
             models={models}
             modes={modes}
             currentModeId={currentModeId}
             defaultModeId={defaultModeId}
             running={running}
             canSend={Boolean(session && text.trim())}
+            onPickProvider={onPickProvider}
             onPickModel={onPickModel}
             onPickMode={onPickMode}
             onPickThinking={onPickThinking}

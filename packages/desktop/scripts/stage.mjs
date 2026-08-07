@@ -53,7 +53,16 @@ function collectRuntimeDeps() {
     }
     try {
       const subPkg = JSON.parse(readFileSync(subPkgPath, "utf8"));
+      // dependencies + optionalDependencies 都要收集：
+      // claude-agent-sdk 的 native 二进制在 optionalDependencies 里声明
+      // （如 @anthropic-ai/claude-agent-sdk-linux-x64）；npm 只安装当前
+      // 平台的包，所以这里收集到的就是本机需要的平台包
       for (const sub of Object.keys(subPkg.dependencies ?? {})) {
+        if (!seen.has(sub)) {
+          queue.push(sub);
+        }
+      }
+      for (const sub of Object.keys(subPkg.optionalDependencies ?? {})) {
         if (!seen.has(sub)) {
           queue.push(sub);
         }

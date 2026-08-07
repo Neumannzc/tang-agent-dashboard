@@ -4,6 +4,7 @@
 
 import { AgentManager } from "./agent-manager.js";
 import { ensureConfigDir, loadConfig } from "./config.js";
+import { augmentAgentPath } from "./executable-resolution.js";
 import { SessionStore } from "./session-store.js";
 import { WsServer } from "./ws-server.js";
 
@@ -23,6 +24,8 @@ function parseArgs(argv: string[]): { port: number | null } {
 }
 
 async function main(): Promise<void> {
+  // GUI 启动的桌面壳 PATH 可能缺用户级 bin（nvm 等），先补 PATH 再解析任何 agent 二进制
+  augmentAgentPath();
   const cliPort = parseArgs(process.argv.slice(2)).port;
   const config = loadConfig();
   ensureConfigDir();

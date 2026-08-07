@@ -67,6 +67,7 @@ export function Sidebar(props: {
   onCloseSession: (sessionId: string) => void;
   onNewSession: (cwd: string) => void;
   onImport: () => void;
+  onOpenSettings: () => void;
 }) {
   const {
     workspaces,
@@ -83,6 +84,7 @@ export function Sidebar(props: {
     onCloseSession,
     onNewSession,
     onImport,
+    onOpenSettings,
   } = props;
   const [query, setQuery] = useState("");
 
@@ -175,7 +177,7 @@ export function Sidebar(props: {
             {connected ? "daemon 已连接" : "daemon 未连接"}
           </div>
         </div>
-        <button className="btn btn-ghost" style={{ padding: 5 }} title="设置（二期）">
+        <button className="btn btn-ghost" style={{ padding: 5 }} title="设置" onClick={onOpenSettings}>
           <GearIcon />
         </button>
       </div>

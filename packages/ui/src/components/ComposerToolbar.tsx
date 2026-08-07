@@ -10,9 +10,10 @@ import type {
 } from "@agent-console/protocol";
 import { ModePopover } from "./ModePopover.js";
 import { ModelPopover } from "./ModelPopover.js";
+import { ProviderPopover } from "./ProviderPopover.js";
 import { ThinkingPopover } from "./ThinkingPopover.js";
 
-type Selector = "model" | "mode" | "thinking" | null;
+type Selector = "provider" | "model" | "mode" | "thinking" | null;
 
 function SendIcon() {
   return (
@@ -33,12 +34,16 @@ function StopIcon() {
 interface ComposerToolbarProps {
   /** 激活会话；draft 模式下传入 draft session stub（sessionId: "draft"） */
   session: SessionSummary | null;
+  /** draft 模式（未建会话）：显示 agent 选择 chip */
+  drafting: boolean;
+  providers: string[];
   models: AgentModelDefinition[];
   modes: AgentMode[];
   currentModeId: string | null;
   defaultModeId?: string | null;
   running: boolean;
   canSend: boolean;
+  onPickProvider: (provider: string) => void;
   onPickModel: (modelId: string, defaultThinkingOptionId?: string) => void;
   onPickMode: (modeId: string) => void;
   onPickThinking: (thinkingOptionId: string | null) => void;
@@ -49,12 +54,15 @@ interface ComposerToolbarProps {
 export function ComposerToolbar(props: ComposerToolbarProps) {
   const {
     session,
+    drafting,
+    providers,
     models,
     modes,
     currentModeId,
     defaultModeId = null,
     running,
     canSend,
+    onPickProvider,
     onPickModel,
     onPickMode,
     onPickThinking,
@@ -79,6 +87,15 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
           <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
         </svg>
       </button>
+      {drafting && session ? (
+        <ProviderPopover
+          providers={providers}
+          currentProvider={session.provider}
+          open={openSelector === "provider"}
+          onOpenChange={(open) => setOpenSelector(open ? "provider" : null)}
+          onPick={onPickProvider}
+        />
+      ) : null}
       <ModePopover
         session={session}
         modes={modes}

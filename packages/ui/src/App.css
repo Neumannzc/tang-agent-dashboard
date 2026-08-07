@@ -1,6 +1,9 @@
-/* Tang Agent Dashboard — 设计系统（DESIGN-SYSTEM.md v1 定稿） */
+/* Tang Agent Dashboard — 设计系统（DESIGN-SYSTEM.md v1 定稿）
+   主题：data-theme="dark"（默认）/ "light"
+   亮色 token 在文件末尾以 [data-theme="light"] 重写 CSS 变量。 */
 
-:root {
+:root,
+[data-theme="dark"] {
   --bg: #181818;
   --bg-sunken: #141414;
   --sidebar: #171717;
@@ -21,6 +24,16 @@
   --warn: #d9a45b;
   --info: #7aa2d9;
 
+  /* 原始硬编码色（avatar / scrollbar / spinner / focus ring）的 token 化别名 */
+  --chrome-medium: #3a3a3a;
+  --chrome-strong: #454545;
+  --chrome-weak: #555;
+  --hover-overlay: rgba(255, 255, 255, 0.04);
+  --focus-ring-soft: rgba(255, 255, 255, 0.04);
+  --check-mark-ink: #101010;
+  --input-focus-border: #a96b57;
+  --body-bg: #0e0e0e;
+
   /* 新增 layer surface 阶梯（DESIGN.md §2，对齐 CodexPlusPlus bg-base/deep/layer-01..04） */
   --surface-base: #181818;
   --surface-deep: #141414;
@@ -28,6 +41,11 @@
   --surface-layer-02: #212121;
   --surface-layer-03: #262626;
   --surface-popover: #282828;
+  --scrollbar-thumb: #3a3a3a;
+  --backdrop: rgba(10, 10, 10, 0.68);
+  --shadow-prominent: 0 24px 64px rgba(0, 0, 0, 0.55);
+  --session-spinner-border: rgba(122, 162, 217, 0.25);
+  --i-badge-border: rgba(123, 184, 146, 0.35);
 
   /* 既有别名（迁移兼容，新代码用新名） */
   --bg: var(--surface-base);
@@ -55,7 +73,7 @@
 
   /* 阴影边界（DESIGN.md §7：popover 用 hairline + soft shadow 合一，替代 border） */
   --elevation-floating: 0 8px 16px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(255, 255, 255, 0.04);
-  --elevation-prominent: 0 24px 64px rgba(0, 0, 0, 0.55);
+  --elevation-prominent: var(--shadow-prominent);
 
   /* 间距 token（DESIGN.md §4 4px base） */
   --space-05: 2px;
@@ -104,7 +122,7 @@ body,
 
 body {
   font-family: var(--sans);
-  background: #0e0e0e;
+  background: var(--body-bg);
   color: var(--text);
   font-size: 14px;
   line-height: 1.55;
@@ -208,7 +226,7 @@ body {
 }
 
 .sb-scroll::-webkit-scrollbar-thumb {
-  background: #3a3a3a;
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 
@@ -235,7 +253,7 @@ body {
 }
 
 .ws-item:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--hover-overlay);
 }
 
 .ws-item.active {
@@ -330,7 +348,7 @@ body {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: #3a3a3a;
+  background: var(--chrome-medium);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -470,8 +488,8 @@ body {
 .session-spinner {
   width: 11px;
   height: 11px;
-  border: 2px solid rgba(122, 162, 217, 0.25);
-  border-top-color: var(--status-info);
+  border: 2px solid var(--session-spinner-border);
+  border-top-color: var(--info);
   border-radius: 50%;
   display: inline-block;
   animation: spin 0.8s linear infinite;
@@ -674,7 +692,7 @@ body {
 }
 
 .thread::-webkit-scrollbar-thumb {
-  background: #3a3a3a;
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 
@@ -948,7 +966,7 @@ body {
 .spinner {
   width: 11px;
   height: 11px;
-  border: 2px solid #454545;
+  border: 2px solid var(--chrome-strong);
   border-top-color: var(--info);
   border-radius: 50%;
   display: inline-block;
@@ -984,7 +1002,7 @@ body {
   width: 14px;
   height: 14px;
   border-radius: 4px;
-  border: 1.5px solid #555;
+  border: 1.5px solid var(--chrome-weak);
   flex-shrink: 0;
   margin-top: 3px;
 }
@@ -1006,7 +1024,7 @@ body {
   top: 1px;
   width: 5px;
   height: 8px;
-  border: solid #101010;
+  border: solid var(--check-mark-ink);
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
@@ -1073,7 +1091,7 @@ body {
 }
 
 .perm .question-input:focus {
-  border-color: #a96b57;
+  border-color: var(--input-focus-border);
 }
 
 .perm .actions {
@@ -1126,8 +1144,8 @@ body {
 }
 
 .composer:focus-within {
-  border-color: #4a4a4a;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04);
+  border-color: var(--border-hover);
+  box-shadow: 0 0 0 3px var(--focus-ring-soft);
 }
 
 .composer textarea {
@@ -1182,7 +1200,7 @@ body {
 }
 
 .c-icon:hover {
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--hover-overlay-strong);
   color: var(--text);
 }
 
@@ -1223,7 +1241,7 @@ body {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(10, 10, 10, 0.68);
+  background: var(--backdrop);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1236,7 +1254,7 @@ body {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 14px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--elevation-prominent);
   overflow: hidden;
 }
 
@@ -1343,7 +1361,7 @@ body {
 }
 
 .dir-row input:focus {
-  border-color: #a96b57;
+  border-color: var(--input-focus-border);
 }
 
 .field select {
@@ -1408,7 +1426,7 @@ body {
 }
 
 .imp-list::-webkit-scrollbar-thumb {
-  background: #3a3a3a;
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 
@@ -1473,7 +1491,7 @@ body {
 .i-badge {
   font-size: 10px;
   color: var(--success);
-  border: 1px solid rgba(123, 184, 146, 0.35);
+  border: 1px solid var(--i-badge-border);
   border-radius: 10px;
   padding: 1px 7px;
 }
@@ -1499,7 +1517,7 @@ body {
 }
 
 .popover-shell::-webkit-scrollbar-thumb {
-  background: #3a3a3a;
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 
@@ -1766,4 +1784,79 @@ body {
 .chip[data-mode-tint="custom"].chip-open {
   background: var(--mode-custom-border);
   color: var(--mode-custom-solid);
+}
+
+/* ============ 亮色主题（DESIGN-SYSTEM 扩展） ============ */
+
+[data-theme="light"] {
+  --bg: #ffffff;
+  --bg-sunken: #f5f5f6;
+  --sidebar: #fafafa;
+  --card: #ffffff;
+  --card-hover: #f0f0f1;
+  --popover: #ffffff;
+  --border: #d4d4d8;
+  --border-soft: #e4e4e7;
+  --text: #18181b;
+  --text-dim: #52525b;
+  --text-faint: #a1a1aa;
+  --accent: #cd8f74;
+  --accent-hover: #b87a5e;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(205, 143, 116, 0.14);
+  --success: #3f8d63;
+  --danger: #d04848;
+  --warn: #b07a30;
+  --info: #4f78b8;
+
+  --surface-base: #ffffff;
+  --surface-deep: #f5f5f6;
+  --surface-layer-01: #f4f4f5;
+  --surface-layer-02: #ececef;
+  --surface-layer-03: #dedee2;
+  --surface-popover: #ffffff;
+  --scrollbar-thumb: #c4c4c8;
+  --backdrop: rgba(24, 24, 27, 0.32);
+  --shadow-prominent: 0 24px 64px rgba(24, 24, 27, 0.18);
+  --session-spinner-border: rgba(79, 120, 184, 0.25);
+  --i-badge-border: rgba(63, 141, 99, 0.35);
+
+  /* 硬编码色 token 化（亮色版） */
+  --chrome-medium: #e4e4e7;
+  --chrome-strong: #c4c4c8;
+  --chrome-weak: #a1a1aa;
+  --hover-overlay: rgba(24, 24, 27, 0.04);
+  --hover-overlay-strong: rgba(24, 24, 27, 0.07);
+  --focus-ring-soft: rgba(24, 24, 27, 0.06);
+  --check-mark-ink: #ffffff;
+  --input-focus-border: #b87a5e;
+  --body-bg: #ececef;
+
+  /* Mode chip 三色（亮色版微调） */
+  --mode-plan-border: rgba(79, 120, 184, 0.28);
+  --mode-plan-background: rgba(79, 120, 184, 0.12);
+  --mode-default-border: rgba(205, 143, 116, 0.32);
+  --mode-default-background: rgba(205, 143, 116, 0.14);
+  --mode-custom-border: rgba(184, 122, 94, 0.32);
+  --mode-custom-background: rgba(184, 122, 94, 0.14);
+
+  /* 阴影（亮色下浮层用更柔更深的黑阴影） */
+  --elevation-floating: 0 8px 16px rgba(24, 24, 27, 0.08), 0 0 0 0.5px rgba(24, 24, 27, 0.06);
+  --ring: rgba(205, 143, 116, 0.35);
+}
+
+[data-theme="light"] .perm .kind {
+  background: rgba(176, 122, 48, 0.12);
+  border-color: rgba(176, 122, 48, 0.32);
+}
+
+[data-theme="light"] .msg-error {
+  border-color: rgba(208, 72, 72, 0.35);
+  background: rgba(208, 72, 72, 0.06);
+  color: #b03434;
+}
+
+[data-theme="light"] .p-card .p-logo {
+  background: #e4e4e7;
+  color: var(--text);
 }

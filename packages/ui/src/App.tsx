@@ -6,11 +6,13 @@ import type { AgentMode, AgentModelDefinition, AgentPermissionRequest, AgentProv
 import { DaemonClient, resolveDaemonWsUrl } from "./ws.js";
 import { applyEvent, buildWorkspaces, sessionCwd } from "./state.js";
 import type { ThreadItem } from "./state.js";
+import { applyTheme, loadThemeMode, SYSTEM_THEME_ID } from "./theme.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { Topbar } from "./components/Topbar.js";
 import { Timeline } from "./components/Timeline.js";
 import { Composer } from "./components/Composer.js";
 import { NewWorkspaceModal, ImportModal } from "./components/Modals.js";
+import { SettingsModal } from "./components/SettingsModal.js";
 
 const KNOWN_CWDS_KEY = "tang-ai-chat:knownCwds";
 const ACTIVE_KEY = "tang-ai-chat:active";
@@ -47,7 +49,7 @@ export function App() {
   const [timelines, setTimelines] = useState<Record<string, ThreadItem[]>>({});
   const [running, setRunning] = useState<Record<string, boolean>>({});
   const [knownCwds, setKnownCwds] = useState<string[]>(loadKnownCwds);
-  const [modal, setModal] = useState<null | "workspace" | "import">(null);
+  const [modal, setModal] = useState<null | "workspace" | "import" | "settings">(null);
   const [models, setModels] = useState<AgentModelDefinition[]>([]);
   const [modesBySession, setModesBySession] = useState<Record<string, AgentMode[]>>({});
   const [currentModeIdBySession, setCurrentModeIdBySession] = useState<Record<string, string | null>>({});
@@ -74,6 +76,30 @@ export function App() {
   useEffect(() => {
     draftRef.current = draft;
   }, [draft]);
+
+  // 启动时应用持久化主题（默认 system，跟随 OS）
+  useEffect(() => {
+    applyTheme(loadThemeMode());
+  }, []);
+
+  // system 模式下监听 OS 外观变化实时切换
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+    const mq = window.matchMedia("(prefers-color-scheme: light)");
+    const onChange = () => {
+      if (loadThemeMode() === SYSTEM_THEME_ID) {
+        applyTheme(SYSTEM_THEME_ID);
+      }
+    };
+    if (typeof mq.addEventListener === "function") {
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    }
+    mq.addListener(onChange);
+    return () => mq.removeListener(onChange);
+  }, []);
 
   // ---------- 连接 daemon（含断线自动重连） ----------
 
@@ -229,6 +255,9 @@ export function App() {
       setModels([]);
       return;
     }
+    // 切 provider（draft 换 agent / 切换不同 provider 的会话）时先清空旧列表：
+    // 新 provider 的模型加载期间（claude 最长 20s）不能残留上一个 agent 的模型
+    setModels([]);
     let cancelled = false;
     clientRef.current
       .models(activeProvider)
@@ -538,6 +567,26 @@ export function App() {
     });
   }, []);
 
+  /** draft 模式切 agent：provider 专属的 model/thinking/mode 一并重置 */
+  const handlePickProvider = useCallback((provider: string) => {
+    if (!draftRef.current) {
+      return;
+    }
+    // 同步清空模型列表：避免旧 agent 的模型在新列表加载完成前残留
+    setModels([]);
+    setDraft((d) =>
+      d
+        ? {
+            ...d,
+            provider: provider as AgentProvider,
+            model: null,
+            thinkingOptionId: null,
+            modeId: null,
+          }
+        : d,
+    );
+  }, []);
+
   // ---------- 渲染 ----------
 
   return (
@@ -561,6 +610,7 @@ export function App() {
         onCloseSession={(id) => void handleCloseSession(id)}
         onNewSession={handleNewSessionDraft}
         onImport={() => setModal("import")}
+        onOpenSettings={() => setModal("settings")}
       />
       <main className="main">
         <Topbar session={activeSession} cwd={activeWorkspace?.cwd ?? ""} />
@@ -583,11 +633,13 @@ export function App() {
           session={draft ? draftSession : activeSession}
           running={isRunning}
           drafting={Boolean(draft)}
+          providers={providers}
           models={models}
           modes={activeModes}
           currentModeId={effectiveModeId}
           defaultModeId={null}
           focusSignal={focusSignal}
+          onPickProvider={handlePickProvider}
           onPickModel={handlePickModel}
           onPickMode={handlePickMode}
           onPickThinking={handlePickThinking}
@@ -605,6 +657,9 @@ export function App() {
       ) : null}
       {modal === "import" ? (
         <ImportModal providers={providers} onClose={() => setModal(null)} />
+      ) : null}
+      {modal === "settings" ? (
+        <SettingsModal onClose={() => setModal(null)} />
       ) : null}
     </div>
   );
