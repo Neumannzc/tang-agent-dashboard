@@ -1,0 +1,26 @@
+{
+  "name": "agent-console",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @agent-console/protocol && npm run build -w @agent-console/daemon && npm run build -w @agent-console/ui",
+    "dev": "node scripts/dev.mjs",
+    "dev:daemon": "npm run dev -w @agent-console/daemon",
+    "dev:ui": "npm run dev -w @agent-console/ui",
+    "start": "npm run start -w @agent-console/daemon",
+    "desktop": "npm run build && npm run start -w @agent-console/desktop"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
+  },
+  "devDependencies": {
+    "playwright-core": "^1.62.1"
+  }
+}

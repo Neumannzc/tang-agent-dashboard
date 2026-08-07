@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+.build/
+*.tsbuildinfo
+
+# Caching
+.turbo/
+.parcel-cache/
+.cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Desktop build outputs
+desktop/release/
+desktop/*.exe
+
+# Test coverage
+coverage/
+
+# Misc
+*.local
+*.log

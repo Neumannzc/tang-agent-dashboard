@@ -1,0 +1,15 @@
+{
+  "name": "@agent-console/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Agent Console 桌面壳：Electron 包 daemon + UI",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0"
+  }
+}

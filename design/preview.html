@@ -1,0 +1,960 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tang Agent Dashboard — 界面原型 v4（Workspace 版）</title>
+<style>
+  :root {
+    --bg: #181818;
+    --bg-sunken: #141414;
+    --sidebar: #171717;
+    --card: #212121;
+    --card-hover: #2a2a2a;
+    --popover: #282828;
+    --border: #303030;
+    --border-soft: #262626;
+    --text: #ececec;
+    --text-dim: #afafaf;
+    --text-faint: #6e6e6e;
+    --accent: #cd8f74;
+    --accent-hover: #d99c82;
+    --accent-ink: #241512;
+    --accent-soft: rgba(205,143,116,.12);
+    --success: #7bb892;
+    --danger: #e06c6c;
+    --warn: #d9a45b;
+    --info: #7aa2d9;
+    --r-sm: 8px;
+    --r: 12px;
+    --r-lg: 24px;
+    --mono: "SFMono-Regular", ui-monospace, "JetBrains Mono", Consolas, monospace;
+    --sans: -apple-system, "SF Pro Text", "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--sans);
+    background: #0e0e0e;
+    color: var(--text);
+    font-size: 14px; line-height: 1.55;
+    display: flex; justify-content: center; align-items: center;
+    padding: 24px;
+  }
+  .icon { width: 16px; height: 16px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+
+  .window {
+    width: 1280px; max-width: 100%;
+    height: min(820px, calc(100vh - 48px));
+    display: flex;
+    background: var(--bg);
+    border-radius: 14px;
+    border: 1px solid #3d3d3d;
+    box-shadow: 0 24px 80px rgba(0,0,0,.6);
+    overflow: hidden;
+  }
+
+  /* ============ 侧边栏：项目列表 ============ */
+  .sidebar { width: 276px; flex-shrink: 0; display: flex; flex-direction: column; background: var(--sidebar); border-right: 1px solid var(--border-soft); }
+  .sb-head { padding: 10px 10px 6px; }
+  .btn-new {
+    width: 100%; display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; background: var(--card); color: var(--text);
+    border: none; border-radius: var(--r-sm);
+    font-size: 13px; font-weight: 500; cursor: pointer; text-align: left;
+    transition: background .12s;
+  }
+  .btn-new:hover { background: var(--card-hover); }
+  .search-wrap { position: relative; margin-top: 8px; }
+  .search-wrap .icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-faint); }
+  .search { width: 100%; background: var(--card); border: none; border-radius: var(--r-sm); padding: 7px 10px 7px 32px; color: var(--text); font-size: 12.5px; outline: none; }
+  .search::placeholder { color: var(--text-faint); }
+
+  .sb-scroll { flex: 1; overflow-y: auto; padding: 4px 8px 12px; }
+  .sb-scroll::-webkit-scrollbar { width: 6px; }
+  .sb-scroll::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
+  .sec { font-size: 11px; color: var(--text-faint); padding: 12px 10px 4px; font-weight: 500; letter-spacing: .02em; }
+
+  .ws-item {
+    display: block; width: 100%;
+    padding: 8px 10px;
+    border: none; border-radius: var(--r-sm);
+    background: transparent; color: var(--text);
+    cursor: pointer; text-align: left;
+    font-family: var(--sans);
+    transition: background .1s;
+  }
+  .ws-item:hover { background: rgba(255,255,255,.04); }
+  .ws-item.active { background: var(--card); }
+  .ws-item .row { display: flex; align-items: center; gap: 8px; }
+  .ws-item .ficon { color: var(--text-dim); width: 14px; height: 14px; flex-shrink: 0; }
+  .ws-item .name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ws-item .path { font-size: 11px; color: var(--text-faint); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; padding-left: 22px; }
+  .ws-item .count { margin-left: auto; font-size: 10.5px; color: var(--text-faint); background: var(--bg-sunken); border: 1px solid var(--border-soft); border-radius: 10px; padding: 1px 7px; flex-shrink: 0; }
+  .ws-item.active .count { background: var(--accent-soft); color: var(--accent-hover); border-color: transparent; }
+
+  .sb-foot { padding: 8px 10px; border-top: 1px solid var(--border-soft); display: flex; align-items: center; gap: 8px; }
+  .avatar { width: 26px; height: 26px; border-radius: 50%; background: #3a3a3a; display: flex; align-items: center; justify-content: center; color: var(--text); font-size: 11px; font-weight: 600; }
+  .foot-meta { flex: 1; min-width: 0; line-height: 1.25; }
+  .foot-name { font-size: 12px; font-weight: 500; }
+  .foot-sub { font-size: 11px; color: var(--text-faint); display: flex; align-items: center; gap: 5px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); display: inline-block; }
+
+  /* ============ 主区 ============ */
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  .topbar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--border-soft); }
+  .tt { font-size: 13.5px; font-weight: 600; }
+  .ts { font-size: 11.5px; color: var(--text-faint); font-family: var(--mono); margin-top: 1px; }
+  .grow { flex: 1; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--card); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--r-sm);
+    padding: 6px 10px; font-size: 12.5px; font-family: var(--sans);
+    cursor: pointer; transition: background .12s;
+  }
+  .btn:hover { background: var(--card-hover); }
+  .btn .icon { width: 14px; height: 14px; }
+  .btn-ghost { background: transparent; border-color: transparent; }
+  .btn-ghost:hover { background: var(--card); }
+  .prov-badge { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--text-dim); padding: 3px 9px; border: 1px solid var(--border-soft); border-radius: 20px; background: var(--bg-sunken); flex-shrink: 0; }
+  .dotp { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+
+  /* ============ 会话 tabs 行（workspace 下） ============ */
+  .tabs-row {
+    display: flex; align-items: stretch; gap: 2px;
+    padding: 6px 10px 0;
+    border-bottom: 1px solid var(--border-soft);
+    overflow-x: auto;
+    background: var(--bg);
+  }
+  .tabs-row::-webkit-scrollbar { height: 0; }
+  .tab {
+    display: flex; align-items: center; gap: 7px;
+    padding: 6px 10px 7px;
+    border: 1px solid transparent; border-bottom: none;
+    border-radius: var(--r-sm) var(--r-sm) 0 0;
+    font-size: 12.5px; color: var(--text-dim);
+    cursor: pointer; white-space: nowrap;
+    max-width: 220px;
+  }
+  .tab:hover { background: rgba(255,255,255,.04); color: var(--text); }
+  .tab.active { background: var(--bg-sunken); border-color: var(--border-soft); color: var(--text); }
+  .tab .t-title { overflow: hidden; text-overflow: ellipsis; }
+  .tab .close { width: 16px; height: 16px; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--text-faint); flex-shrink: 0; }
+  .tab .close:hover { background: var(--card-hover); color: var(--text); }
+  .tab .close .icon { width: 12px; height: 12px; }
+  .tab-add { padding: 6px 8px; color: var(--text-faint); font-size: 16px; display: flex; align-items: center; border-radius: 6px 6px 0 0; cursor: pointer; border: 1px solid transparent; }
+  .tab-add:hover { background: rgba(255,255,255,.05); color: var(--text); }
+  .tabs-empty { padding: 6px 12px 7px; font-size: 12px; color: var(--text-faint); }
+
+  /* ============ 对话流 ============ */
+  .thread { flex: 1; overflow-y: auto; }
+  .thread::-webkit-scrollbar { width: 8px; }
+  .thread::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 4px; }
+  .thread-inner { max-width: 720px; margin: 0 auto; padding: 22px 28px 12px; display: flex; flex-direction: column; gap: 16px; }
+  .empty-project {
+    max-width: 720px; margin: 40px auto; padding: 0 28px; text-align: center;
+  }
+  .empty-project .big { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .empty-project .sub { font-size: 13px; color: var(--text-dim); margin-bottom: 18px; }
+  .empty-project .actions { display: flex; gap: 10px; justify-content: center; }
+
+  /* 消息 */
+  .msg { display: flex; gap: 12px; }
+  .msg .logo { width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; margin-top: 1px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 700; }
+  .logo-pi { background: #7c5cd6; }
+  .logo-codex { background: #4b54ff; }
+  .logo-claude { background: #b05a48; }
+  .logo-opencode { background: #3f7f5f; }
+  .msg .body { flex: 1; min-width: 0; }
+  .msg .head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .msg .who { font-size: 12.5px; font-weight: 600; }
+  .msg .when { font-size: 11px; color: var(--text-faint); }
+  .msg-user { justify-content: flex-end; }
+  .msg-user .body { max-width: 78%; background: var(--card); border-radius: var(--r); border-top-right-radius: 4px; padding: 9px 13px; font-size: 14px; }
+  .msg-user .head { display: none; }
+
+  .md p { margin: 5px 0; }
+  .md h3 { font-size: 13.5px; margin: 12px 0 5px; color: var(--text); font-weight: 600; }
+  .md ul { padding-left: 18px; margin: 5px 0; }
+  .md li { margin: 2px 0; }
+  .md code { background: var(--bg-sunken); border: 1px solid var(--border-soft); border-radius: 4px; padding: 1px 5px; font-family: var(--mono); font-size: 12px; color: #e8c9b8; }
+  .md pre { background: var(--bg-sunken); border: 1px solid var(--border-soft); border-radius: var(--r-sm); padding: 11px 13px; margin: 7px 0; overflow-x: auto; }
+  .md pre code { background: none; border: none; padding: 0; color: #d0cbc6; font-size: 12px; line-height: 1.55; }
+
+  .reasoning { border: 1px solid var(--border-soft); border-radius: var(--r-sm); background: var(--bg-sunken); overflow: hidden; }
+  .reasoning-head { display: flex; align-items: center; gap: 7px; padding: 7px 12px; font-size: 12.5px; color: var(--text-dim); cursor: pointer; user-select: none; }
+  .reasoning-head .icon { width: 12px; height: 12px; transition: transform .15s; }
+  .reasoning.open .reasoning-head .icon { transform: rotate(90deg); }
+  .reasoning-body { display: none; padding: 8px 12px 12px; border-top: 1px solid var(--border-soft); font-size: 12.5px; color: var(--text-dim); font-family: var(--mono); white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
+  .reasoning.open .reasoning-body { display: block; }
+
+  .tool { border: 1px solid var(--border-soft); border-radius: var(--r-sm); background: var(--bg-sunken); overflow: hidden; }
+  .tool-head { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--border-soft); }
+  .tool-head .name { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+  .tool-head .st { margin-left: auto; font-size: 11px; display: flex; align-items: center; gap: 5px; }
+  .st-ok { color: var(--success); }
+  .st-run { color: var(--info); }
+  .tool-body { padding: 8px 12px; font-family: var(--mono); font-size: 12px; color: #c9c4bf; overflow-x: auto; }
+  .spinner { width: 11px; height: 11px; border: 2px solid #454545; border-top-color: var(--info); border-radius: 50%; display: inline-block; animation: spin .8s linear infinite; vertical-align: -1px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .todo { border: 1px solid var(--border-soft); border-radius: var(--r-sm); background: var(--bg-sunken); padding: 9px 13px; font-size: 13px; }
+  .todo .row { display: flex; gap: 8px; padding: 2px 0; color: var(--text-dim); }
+  .todo .row .chk { width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid #555; flex-shrink: 0; margin-top: 3px; }
+  .todo .row.done { color: var(--text-faint); }
+  .todo .row.done .chk { background: var(--success); border-color: var(--success); position: relative; }
+  .todo .row.done .chk::after { content: ""; position: absolute; left: 3.5px; top: 1px; width: 5px; height: 8px; border: solid #101010; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+  .todo .row.done .txt { text-decoration: line-through; }
+
+  .perm { border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--card); padding: 13px 15px; }
+  .perm .kind { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--warn); background: rgba(217,164,91,.1); border: 1px solid rgba(217,164,91,.25); border-radius: 5px; padding: 2px 8px; margin-bottom: 9px; }
+  .perm .desc { font-size: 13px; color: var(--text-dim); margin-bottom: 9px; }
+  .perm .detail { background: var(--bg-sunken); border: 1px solid var(--border-soft); border-radius: var(--r-sm); padding: 9px 12px; font-family: var(--mono); font-size: 12px; overflow-x: auto; margin-bottom: 12px; color: #d5d0cb; }
+  .perm .actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .btn-primary { background: var(--accent); color: var(--accent-ink); border: none; font-weight: 600; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-danger { background: transparent; color: var(--text-dim); border-color: var(--border); }
+  .btn-danger:hover { background: var(--card-hover); color: var(--text); }
+
+  .msg-error { border: 1px solid rgba(224,108,108,.35); background: rgba(224,108,108,.07); color: #e8a4a4; border-radius: var(--r-sm); padding: 8px 12px; font-size: 13px; }
+  .running-hint { display: flex; align-items: center; gap: 9px; color: var(--text-faint); font-size: 12.5px; padding: 2px 0 0 38px; }
+
+  /* ============ composer ============ */
+  .composer-wrap { padding: 8px 28px 18px; }
+  .composer-inner { max-width: 720px; margin: 0 auto; }
+  .composer { border-radius: var(--r-lg); border: 1px solid var(--border); background: var(--card); transition: border-color .15s, box-shadow .15s; }
+  .composer:focus-within { border-color: #4a4a4a; box-shadow: 0 0 0 3px rgba(255,255,255,.04); }
+  .composer textarea { width: 100%; background: transparent; border: none; outline: none; resize: none; color: var(--text); font-family: var(--sans); font-size: 14.5px; padding: 14px 16px 4px; line-height: 1.5; min-height: 28px; max-height: 180px; }
+  .composer textarea::placeholder { color: var(--text-faint); }
+  .composer-foot { display: flex; align-items: center; gap: 4px; padding: 6px 8px 10px; }
+  .c-icon { width: 30px; height: 30px; border-radius: var(--r-sm); display: flex; align-items: center; justify-content: center; background: transparent; border: none; color: var(--text-dim); cursor: pointer; }
+  .c-icon:hover { background: rgba(255,255,255,.07); color: var(--text); }
+  .send { width: 32px; height: 32px; border-radius: 50%; border: none; cursor: pointer; background: var(--accent); color: var(--accent-ink); display: flex; align-items: center; justify-content: center; transition: background .12s; margin-left: 6px; }
+  .send:hover { background: var(--accent-hover); }
+  .send:disabled { opacity: .35; cursor: not-allowed; }
+  .hint { text-align: center; font-size: 11px; color: var(--text-faint); margin-top: 8px; }
+
+  /* ============ 模态 ============ */
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(10,10,10,.68); display: flex; align-items: center; justify-content: center; z-index: 100; }
+  .modal { width: 520px; max-width: calc(100vw - 48px); background: var(--bg); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 24px 64px rgba(0,0,0,.55); overflow: hidden; }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border-soft); font-size: 14px; font-weight: 600; }
+  .modal-body { padding: 16px 18px; }
+  .field { margin-bottom: 16px; }
+  .field-label { font-size: 12px; color: var(--text-dim); margin-bottom: 7px; display: block; }
+  .provider-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .p-card { display: flex; align-items: center; gap: 9px; padding: 9px 11px; background: var(--card); border: 1px solid var(--border); border-radius: var(--r-sm); cursor: pointer; transition: border-color .12s, background .12s; }
+  .p-card:hover { background: var(--card-hover); }
+  .p-card.active { border-color: var(--accent); background: var(--accent-soft); }
+  .p-card .p-logo { width: 24px; height: 24px; border-radius: 7px; background: #333; color: var(--text-dim); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+  .p-card .p-name { font-size: 13px; font-weight: 500; }
+  .p-card .p-sub { font-size: 11px; color: var(--text-faint); }
+  .dir-row { display: flex; gap: 8px; }
+  .dir-row input { flex: 1; background: var(--bg-sunken); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 8px 11px; color: var(--text); font-family: var(--mono); font-size: 12.5px; outline: none; }
+  .dir-row input:focus { border-color: #a96b57; }
+  .field select { width: 100%; background: var(--bg-sunken); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 8px 11px; color: var(--text); font-size: 13px; outline: none; }
+  .modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 0 18px 18px; }
+  .modal-hint { font-size: 11px; color: var(--text-faint); padding: 0 18px 14px; }
+
+  /* ============ 导入历史会话 ============ */
+  .btn-import {
+    width: 100%;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 8px;
+    background: transparent; border: none;
+    border-top: 1px solid var(--border-soft);
+    color: var(--text-faint); font-size: 12px;
+    cursor: pointer;
+    transition: background .12s, color .12s;
+  }
+  .btn-import:hover { background: var(--card); color: var(--text-dim); }
+  .btn-import .icon { width: 13px; height: 13px; }
+  .modal-lg { width: 660px; }
+  .scan-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .scan-status { font-size: 12px; color: var(--text-faint); display: flex; align-items: center; gap: 8px; }
+  .imp-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .imp-list { max-height: 250px; overflow-y: auto; border: 1px solid var(--border-soft); border-radius: var(--r-sm); background: var(--bg-sunken); }
+  .imp-list::-webkit-scrollbar { width: 6px; }
+  .imp-list::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
+  .imp-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-soft);
+    cursor: pointer;
+    transition: background .1s;
+  }
+  .imp-row:last-child { border-bottom: none; }
+  .imp-row:hover { background: var(--card); }
+  .imp-row input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px; flex-shrink: 0; }
+  .imp-row .i-main { flex: 1; min-width: 0; }
+  .imp-row .i-title { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .imp-row .i-cwd { font-size: 11px; color: var(--text-faint); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .imp-row .i-meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .imp-row .i-time { font-size: 11px; color: var(--text-faint); }
+  .i-badge { font-size: 10px; color: var(--success); border: 1px solid rgba(123,184,146,.35); border-radius: 10px; padding: 1px 7px; }
+  .i-badge.gone { color: var(--text-faint); border-color: var(--border); }
+
+  .demo-bar { position: fixed; top: 14px; right: 20px; display: flex; gap: 8px; z-index: 200; }
+  .demo-bar .btn { background: var(--card); border: 1px solid var(--border); color: var(--text-dim); }
+</style>
+</head>
+<body>
+
+<div class="demo-bar">
+  <button class="btn" onclick="togglePerm()">+ 权限·工具</button>
+  <button class="btn" onclick="demoStream()">+ 打字机</button>
+</div>
+
+<div class="window">
+  <!-- ============ 侧边栏：项目列表 ============ -->
+  <aside class="sidebar">
+    <div class="sb-head">
+      <button class="btn-new" onclick="openNewWorkspace()">
+        <svg class="icon"><path d="M12 5v14M5 12h14"/></svg>
+        New workspace
+      </button>
+      <div class="search-wrap">
+        <svg class="icon"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input class="search" type="text" placeholder="搜索项目…" />
+      </div>
+    </div>
+    <div class="sb-scroll" id="wsList"></div>
+    <button class="btn-import" onclick="openImportModal()" title="扫描 agent 本地历史会话并导入">
+      <svg class="icon"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+      导入历史会话
+    </button>
+    <div class="sb-foot">
+      <div class="avatar">棠</div>
+      <div class="foot-meta">
+        <div class="foot-name">tang</div>
+        <div class="foot-sub"><span class="dot"></span> daemon 已连接</div>
+      </div>
+      <button class="btn btn-ghost" style="padding:5px" title="设置">
+        <svg class="icon"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ============ 主区 ============ -->
+  <main class="main">
+    <div class="topbar">
+      <span class="prov-badge" id="tbProvider"><span class="dotp" style="background:#7c5cd6"></span>Pi</span>
+      <div>
+        <div class="tt" id="tt">实现 provider-runner 的类型安全</div>
+        <div class="ts" id="tpath">~/projects/agent-console/packages/daemon/src</div>
+      </div>
+      <div class="grow"></div>
+      <button class="btn" onclick="toggleModel()">
+        <span id="modelLabel">sonar-pro</span>
+        <svg class="icon" style="width:12px;height:12px"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <button class="btn btn-ghost" title="更多">
+        <svg class="icon"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+      </button>
+    </div>
+
+    <!-- 会话 tabs 行：当前项目下的会话 -->
+    <div class="tabs-row" id="tabsRow"></div>
+
+    <div class="thread" id="thread"><div class="thread-inner" id="threadInner"></div></div>
+
+    <div class="composer-wrap">
+      <div class="composer-inner">
+        <div class="composer">
+          <textarea id="input" rows="1" placeholder="选择一个会话开始对话…"></textarea>
+          <div class="composer-foot">
+            <button class="c-icon" title="附件（本期不做）">
+              <svg class="icon"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            </button>
+            <span style="flex:1"></span>
+            <span style="font-size:11px;color:var(--text-faint);margin-right:6px" id="modeHint"></span>
+            <button class="send" id="sendBtn" title="发送" onclick="userSend()">
+              <svg class="icon" style="width:15px;height:15px"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="hint" id="statusHint"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- 新建 workspace 模态 -->
+<div class="modal-backdrop" id="wsModal" style="display:none">
+  <div class="modal">
+    <div class="modal-head">新建 workspace <button class="btn btn-ghost" style="padding:4px" onclick="closeModal('wsModal')">✕</button></div>
+    <div class="modal-body">
+      <div class="field">
+        <span class="field-label">项目目录</span>
+        <div class="dir-row">
+          <input id="wsCwd" value="/home/tang/projects/agent-console" />
+          <button class="btn" onclick="alert('桌面端：打开系统目录选择器（preload IPC）')">浏览…</button>
+        </div>
+      </div>
+      <div class="field">
+        <span class="field-label">初始 agent（可选，也可稍后在项目内新建会话）</span>
+        <div class="provider-grid" id="wsProviderGrid"></div>
+      </div>
+    </div>
+    <div class="modal-hint">workspace = 一个本地项目目录；会话挂在其下</div>
+    <div class="modal-foot">
+      <button class="btn btn-danger" onclick="closeModal('wsModal')">取消</button>
+      <button class="btn btn-primary" onclick="createWorkspace()">创建并打开</button>
+    </div>
+  </div>
+</div>
+
+<!-- 导入历史会话模态 -->
+<div class="modal-backdrop" id="impModal" style="display:none">
+  <div class="modal modal-lg">
+    <div class="modal-head">导入历史会话 <button class="btn btn-ghost" style="padding:4px" onclick="closeModal('impModal')">✕</button></div>
+    <div class="modal-body">
+      <div class="field">
+        <span class="field-label">选择 Agent（可多选）</span>
+        <div class="provider-grid" id="impAgentGrid"></div>
+      </div>
+      <div class="scan-row">
+        <button class="btn" id="impScanBtn" onclick="startScan()">
+          <svg class="icon" style="width:13px;height:13px"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          扫描历史会话
+        </button>
+        <span class="scan-status" id="impScanStatus"></span>
+      </div>
+      <div id="impResults" style="display:none">
+        <div class="imp-toolbar">
+          <span class="field-label" style="margin:0">扫描结果（<span id="impTotal"></span> 个）</span>
+          <button class="btn" style="padding:3px 9px;font-size:11.5px" onclick="toggleSelectAll()">全选 / 取消</button>
+        </div>
+        <div class="imp-list" id="impList"></div>
+        <div class="modal-hint" style="padding:10px 2px 0">导入的会话将按项目目录自动归组到 workspace；目录不存在的会话标记为不可恢复</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-danger" onclick="closeModal('impModal')">取消</button>
+      <button class="btn btn-primary" id="impBtn" onclick="doImport()" disabled>导入</button>
+    </div>
+  </div>
+</div>
+
+<!-- 新建会话模态（当前项目下） -->
+<div class="modal-backdrop" id="nsModal" style="display:none">
+  <div class="modal">
+    <div class="modal-head">在「<span id="nsWsName"></span>」下新建会话 <button class="btn btn-ghost" style="padding:4px" onclick="closeModal('nsModal')">✕</button></div>
+    <div class="modal-body">
+      <div class="field">
+        <span class="field-label">Agent</span>
+        <div class="provider-grid" id="nsProviderGrid"></div>
+      </div>
+      <div class="field">
+        <span class="field-label">模型</span>
+        <select id="nsModel"></select>
+      </div>
+    </div>
+    <div class="modal-hint">会话将挂载到当前 workspace：<span id="nsWsPath" style="font-family:var(--mono)"></span></div>
+    <div class="modal-foot">
+      <button class="btn btn-danger" onclick="closeModal('nsModal')">取消</button>
+      <button class="btn btn-primary" onclick="createSession()">创建会话</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============ 数据模型：workspace（项目）→ sessions（会话） ============ */
+const PROVIDER_META = {
+  pi:       { name: "Pi",       color: "#7c5cd6" },
+  codex:    { name: "Codex",    color: "#4b54ff" },
+  claude:   { name: "Claude",   color: "#b05a48" },
+  opencode: { name: "OpenCode", color: "#3f7f5f" },
+};
+const NS_PROVIDERS = [
+  { id: "pi", name: "Pi", sub: "JSONL over stdio", models: ["sonar-pro", "sonar", "sonar-reasoning"] },
+  { id: "codex", name: "Codex", sub: "app-server", models: ["gpt-5-codex", "gpt-5-mini", "o3"] },
+  { id: "claude", name: "Claude", sub: "Agent SDK", models: ["claude-sonnet-4-5", "claude-opus-4-5"] },
+  { id: "opencode", name: "OpenCode", sub: "serve + SDK", models: ["opencode:sonnet", "opencode:opus"] },
+];
+
+const WORKSPACES = [
+  { id: "w1", name: "agent-console", path: "~/projects/agent-console",
+    sessions: [
+      { id: "s1", provider: "pi", title: "实现 provider-runner 的类型安全", time: "10:24", model: "sonar-pro", mode: "build",
+        items: [
+          { t: "user", text: "帮我把 provider-runner.ts 的类型定义梳理一遍，重点看 startTurn 的事件流是否都带 turnId。注意：不要改动事件模型，只做分析。" },
+          { t: "reasoning", text: "用户要求分析 provider-runner.ts 的类型安全，重点是 startTurn 事件流的 turnId 覆盖。先读取文件，再检查 AgentStreamEvent 的字段分布。" },
+          { t: "tool", name: "read", status: "ok", body: "packages/daemon/src/provider-runner.ts" },
+          { t: "tool", name: "grep", status: "ok", body: 'grep -n "turnId" packages/protocol/src/agent-sdk-types.ts' },
+          { t: "md", content: "分析完成，结论如下：\n\n### 事件流中的 turnId 覆盖情况\n\n`AgentStreamEvent` 中携带 `turnId` 的事件有：\n\n- `turn_started` / `turn_completed` / `turn_failed` / `turn_canceled`\n- `timeline`\n- `permission_requested` / `permission_resolved`\n- `thread_started` 与 `mode_changed` / `model_changed` 不带 turnId（回合外事件，符合语义）\n\n**建议**：`getAgentStreamEventTurnId()` 已做缺省处理，UI 侧按 `turnId ?? sessionId` 归组即可。\n\n```ts\n// provider-runner.ts: startTurn 订阅示例\nexport async function startTurn(session: AgentSession, prompt: string) {\n  const { turnId } = await session.startTurn(prompt);\n  return subscribeToTurn(session, turnId);\n}\n```" },
+          { t: "todo", items: [
+            { text: "梳理事件流 turnId 覆盖", done: true },
+            { text: "给出 UI 归组建议", done: true },
+            { text: "补充 thread_started 语义说明", done: false },
+          ]},
+        ]},
+      { id: "s2", provider: "codex", title: "修复 tree-kill 的 .cmd 解析", time: "09:51", model: "gpt-5-codex", mode: "build",
+        items: [
+          { t: "user", text: "tree-kill 在 Windows 上对 .cmd 二进制杀不掉进程树，看下 executable-resolution 怎么处理的。" },
+          { t: "tool", name: "read", status: "ok", body: "packages/daemon/src/executable-resolution.ts" },
+          { t: "tool", name: "shell", status: "run", body: "where claude && claude --version", spinner: true },
+          { t: "reasoning", text: "Windows 下 spawn .cmd 实际拉起的是 cmd.exe 包装进程，需要解析到真实 exe（如 claude.exe）后按 PID 杀进程树。" },
+          { t: "md", content: "问题定位：`tree-kill` 依赖 `taskkill /T`，但拿到的 PID 是 cmd.exe 包装进程的。\n\n**修复方案**：\n\n```ts\n// executable-resolution.ts\nif (process.platform === \"win32\" && /\\.[cm]md$/i.test(bin)) {\n  bin = await resolveCmdToExe(bin);\n}\n```\n\n**注意**：MVP 阶段可先忽略 Windows。" },
+        ]},
+    ]},
+  { id: "w2", name: "paseo", path: "~/projects/ai-chat/paseo",
+    sessions: [
+      { id: "s3", provider: "claude", title: "梳理权限协议并写设计说明", time: "昨天", model: "claude-sonnet-4-5", mode: "plan",
+        items: [
+          { t: "user", text: "把权限协议整理成一篇设计说明，重点是 tool / question / plan 三种形态在 UI 上的差异。" },
+          { t: "md", content: "已整理成 `docs/UI-DESIGN-INPUT.md` §5，三种形态：\n\n- **tool** → allow / deny 双按钮 + 命令代码块\n- **question** → 文本输入框（value 即答案）\n- **plan** → allow / deny + 计划全文\n\n补充：`interrupt: true` 可用于“拒绝并中断回合”。" },
+        ]},
+      { id: "s4", provider: "opencode", title: "调研 opencode serve 的 cwd 陷阱", time: "昨天", model: "opencode:sonnet", mode: "build",
+        items: [
+          { t: "user", text: "记录一下 opencode serve 的坑：启动 cwd 必须用中性目录。" },
+          { t: "md", content: "已记入 PLAN.md 风险 #1：**opencode serve cwd** 必须用中性 home 目录启动，否则 opencode 会把用户家目录当 workspace 索引。" },
+        ]},
+    ]},
+  { id: "w3", name: "tang-ai-chat", path: "~/projects/ai-chat/tang-ai-chat", sessions: [] },
+];
+
+let activeWsId = "w1";
+let activeSessionId = "s1";
+let nsProvider = "pi";
+let streamTimer = null;
+
+function ws() { return WORKSPACES.find(w => w.id === activeWsId); }
+function session() { return ws()?.sessions.find(s => s.id === activeSessionId) ?? null; }
+
+/* ============ 渲染 ============ */
+const ICON_CHEV = '<svg class="icon"><path d="m6 9 6 6 6-6"/></svg>';
+const ICON_FOLDER = '<svg class="icon ficon"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+
+function renderSidebar() {
+  document.getElementById("wsList").innerHTML =
+    `<div class="sec">项目</div>` +
+    WORKSPACES.map(w => `
+      <button class="ws-item ${w.id === activeWsId ? "active" : ""}" onclick="switchWorkspace('${w.id}')">
+        <div class="row">
+          ${ICON_FOLDER}
+          <span class="name">${esc(w.name)}</span>
+          <span class="count">${w.sessions.length ? w.sessions.length + " 会话" : "空"}</span>
+        </div>
+        <div class="path">${esc(w.path)}</div>
+      </button>`).join("");
+}
+
+function renderTabs() {
+  const w = ws();
+  const el = document.getElementById("tabsRow");
+  if (!w.sessions.length) {
+    el.innerHTML = `<div class="tabs-empty">该项目暂无会话 — 点击 + 新建</div>
+      <div class="tab-add" onclick="openNewSession()">+</div>`;
+    return;
+  }
+  el.innerHTML = w.sessions.map(s => {
+    const p = PROVIDER_META[s.provider];
+    return `<div class="tab ${s.id === activeSessionId ? "active" : ""}" onclick="switchSession('${s.id}')">
+      <span class="dotp" style="background:${p.color}"></span>
+      <span class="t-title">${esc(s.title)}</span>
+      <span class="close" title="关闭" onclick="event.stopPropagation();closeSession('${s.id}')"><svg class="icon"><path d="M18 6 6 18M6 6l12 12"/></svg></span>
+    </div>`;
+  }).join("") + `<div class="tab-add" title="新建会话" onclick="openNewSession()">+</div>`;
+}
+
+function renderThread(s) {
+  if (!s) {
+    document.getElementById("tbProvider").style.display = "none";
+    document.getElementById("tt").textContent = ws().name;
+    document.getElementById("tpath").textContent = ws().path;
+    document.getElementById("modelLabel").textContent = "";
+    document.getElementById("modeHint").textContent = "";
+    document.getElementById("input").placeholder = "该项目暂无会话，点击 tabs 行的 + 新建";
+    document.getElementById("input").disabled = true;
+    document.getElementById("threadInner").innerHTML = `
+      <div class="empty-project">
+        <div class="big">${esc(ws().name)}</div>
+        <div class="sub">${esc(ws().path)} · 该项目下还没有会话</div>
+        <div class="actions">
+          <button class="btn btn-primary" onclick="openNewSession()">新建会话</button>
+          <button class="btn" onclick="openNewWorkspace()">新建 workspace</button>
+        </div>
+      </div>`;
+    return;
+  }
+  const p = PROVIDER_META[s.provider];
+  document.getElementById("tbProvider").style.display = "flex";
+  document.getElementById("tbProvider").innerHTML = `<span class="dotp" style="background:${p.color}"></span>${p.name}`;
+  document.getElementById("tt").textContent = s.title;
+  document.getElementById("tpath").textContent = s.path ?? ws().path;
+  document.getElementById("modelLabel").textContent = s.model;
+  document.getElementById("modeHint").textContent = s.mode;
+  document.getElementById("input").placeholder = `描述你想让 ${p.name} 做的事…`;
+  document.getElementById("input").disabled = false;
+  document.getElementById("threadInner").innerHTML = s.items.map(i => renderItem(s, i)).join("");
+  scrollBottom();
+}
+
+function renderItem(s, item) {
+  const p = PROVIDER_META[s.provider];
+  switch (item.t) {
+    case "user":
+      return `<div class="msg msg-user"><div class="body"><p style="margin:0">${esc(item.text)}</p></div></div>`;
+    case "reasoning":
+      return `<div class="reasoning open" onclick="this.classList.toggle('open')">
+        <div class="reasoning-head">${ICON_CHEV.replace('<path d="m6 9 6 6 6-6"/>','<path d="m9 18 6-6-6-6"/>')} 思考过程</div>
+        <div class="reasoning-body">${esc(item.text)}</div></div>`;
+    case "tool": {
+      const st = item.status === "run"
+        ? `<span class="spinner"></span> <span class="st-run">running</span>`
+        : `<span class="st-ok">done</span>`;
+      return `<div class="tool">
+        <div class="tool-head"><span class="name">${esc(item.name)}</span><span class="st">${st}</span></div>
+        <div class="tool-body">${item.spinner ? "" : "<span style='opacity:.5'>→</span> "}${esc(item.body)}</div>
+      </div>`;
+    }
+    case "todo":
+      return `<div class="todo">${item.items.map(i =>
+        `<div class="row ${i.done ? "done" : ""}"><span class="chk"></span><span class="txt">${esc(i.text)}</span></div>`).join("")}</div>`;
+    case "md":
+      return `<div class="msg">
+        <div class="logo logo-${s.provider}">${p.name[0]}</div>
+        <div class="body">
+          <div class="head"><span class="who">${p.name}</span><span class="when">${item.time ?? s.time}</span></div>
+          <div class="md">${md(item.content)}</div>
+        </div>
+      </div>`;
+  }
+  return "";
+}
+
+function md(src) {
+  const parts = src.split(/```/);
+  let html = "";
+  for (let i = 0; i < parts.length; i++) {
+    if (i % 2 === 0) html += inline(parts[i]);
+    else {
+      const lines = parts[i].split("\n");
+      const code = lines.slice(1).join("\n").replace(/&/g,"&amp;").replace(/</g,"&lt;");
+      html += `<pre><code>${code}</code></pre>`;
+    }
+  }
+  return html;
+}
+function inline(t) {
+  return t
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
+    .replace(/^- (.+)$/gm, "<li>$1</li>")
+    .replace(/(<li>[\s\S]*?)(?=(<li>|$))/g, "<ul>$1</ul>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\n\n/g, "</p><p>")
+    .replace(/\n/g, "<br/>")
+    .replace(/^/, "<p>").replace(/$/, "</p>");
+}
+function esc(s) { return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function scrollBottom() { const t = document.getElementById("thread"); t.scrollTop = t.scrollHeight; }
+
+/* ============ 交互 ============ */
+function switchWorkspace(id) {
+  activeWsId = id;
+  const w = ws();
+  activeSessionId = w.sessions.length ? w.sessions[0].id : null;
+  renderSidebar();
+  renderTabs();
+  renderThread(session());
+}
+function switchSession(id) { activeSessionId = id; renderTabs(); renderThread(session()); }
+function closeSession(id) {
+  const w = ws();
+  const idx = w.sessions.findIndex(s => s.id === id);
+  if (idx >= 0) w.sessions.splice(idx, 1);
+  if (activeSessionId === id) {
+    activeSessionId = w.sessions.length ? w.sessions[Math.max(0, idx - 1)].id : null;
+  }
+  renderTabs();
+  renderThread(session());
+}
+
+function toggleModel() {
+  const s = session();
+  if (!s) return;
+  const opts = NS_PROVIDERS.find(x => x.id === s.provider)?.models ?? [];
+  const label = document.getElementById("modelLabel");
+  label.innerHTML = opts.map(o =>
+    `<span onclick="pickModel('${o}')" style="display:block;padding:3px 10px;border-radius:6px;${o === s.model ? "background:var(--accent-soft);color:var(--accent-hover)" : "color:var(--text)"};cursor:pointer;white-space:nowrap;font-size:12.5px">${o}</span>`).join("");
+}
+function pickModel(id) {
+  const s = session();
+  if (s) s.model = id;
+  document.getElementById("modelLabel").textContent = id;
+}
+
+function userSend() {
+  const s = session();
+  if (!s) return;
+  const input = document.getElementById("input");
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  s.items.push({ t: "user", text });
+  const inner = document.getElementById("threadInner");
+  inner.insertAdjacentHTML("beforeend",
+    `<div class="msg msg-user"><div class="body"><p style="margin:0">${esc(text)}</p></div></div>
+     <div class="running-hint"><span class="spinner"></span> ${PROVIDER_META[s.provider].name} 正在运行…</div>`);
+  document.getElementById("statusHint").textContent = "";
+  scrollBottom();
+}
+
+function demoStream() {
+  if (streamTimer) return;
+  const s = session();
+  if (!s) return;
+  const p = PROVIDER_META[s.provider];
+  const inner = document.getElementById("threadInner");
+  inner.insertAdjacentHTML("beforeend",
+    `<div class="msg"><div class="logo logo-${s.provider}">${p.name[0]}</div><div class="body"><div class="head"><span class="who">${p.name}</span></div><div class="md" id="streamMd"></div></div></div>`);
+  scrollBottom();
+  const full = "正在流式输出… 这段文字由原型模拟 **打字机效果**：事件按 `messageId` 聚合，增量更新同一气泡。\n\n- 支持代码块\n- 支持列表\n- 结束后显示 token 用量";
+  const node = document.getElementById("streamMd");
+  let i = 0;
+  streamTimer = setInterval(() => {
+    i += 1;
+    node.innerHTML = md(full.slice(0, i * 2));
+    scrollBottom();
+    if (i * 2 >= full.length) {
+      clearInterval(streamTimer);
+      streamTimer = null;
+      const h = inner.querySelector(".running-hint");
+      if (h) h.remove();
+      document.getElementById("statusHint").textContent = "已生成 · 2,410 in · 1,208 out tokens";
+    }
+  }, 30);
+}
+
+function togglePerm() {
+  const s = session();
+  if (!s) return;
+  const p = PROVIDER_META[s.provider];
+  const inner = document.getElementById("threadInner");
+  inner.insertAdjacentHTML("beforeend", `<div class="perm">
+    <div class="kind">tool · shell</div>
+    <div class="desc">${p.name} 请求运行命令</div>
+    <div class="detail">$ rm -rf node_modules/.cache &amp;&amp; npm run typecheck</div>
+    <div class="actions">
+      <button class="btn btn-danger" onclick="resolvePerm(this,false)">拒绝</button>
+      <button class="btn btn-primary" onclick="resolvePerm(this,true)">允许</button>
+    </div>
+  </div>`);
+  scrollBottom();
+}
+function resolvePerm(btn, allow) {
+  const card = btn.closest(".perm");
+  card.querySelector(".actions").innerHTML =
+    `<span style="font-size:12px;color:${allow ? "var(--success)" : "var(--danger)"}">${allow ? "已允许，继续执行" : "已拒绝"}</span>`;
+}
+
+/* ============ 新建 workspace / 会话 ============ */
+function openNewWorkspace() {
+  document.getElementById("wsProviderGrid").innerHTML = NS_PROVIDERS.map(p =>
+    `<div class="p-card ${p.id === nsProvider ? "active" : ""}" onclick="nsProvider='${p.id}';renderWsProviderGrid()">
+      <div class="p-logo" style="background:${PROVIDER_META[p.id].color}">${p.name[0]}</div>
+      <div><div class="p-name">${p.name}</div><div class="p-sub">${p.sub}</div></div>
+    </div>`).join("");
+  showModal("wsModal");
+}
+function renderWsProviderGrid() {
+  const grid = document.getElementById("wsProviderGrid");
+  grid.querySelectorAll(".p-card").forEach(c => c.classList.toggle("active", c.getAttribute("onclick").includes(nsProvider)));
+}
+function createWorkspace() {
+  const cwd = document.getElementById("wsCwd").value.trim() || "/tmp/project";
+  const name = cwd.split("/").pop() || "project";
+  const id = `w${WORKSPACES.length + 1}`;
+  const w = { id, name, path: cwd, sessions: [] };
+  WORKSPACES.unshift(w);
+  closeModal("wsModal");
+  activeWsId = id;
+  activeSessionId = null;
+  renderSidebar();
+  renderTabs();
+  renderThread(null);
+}
+
+function openNewSession() {
+  const w = ws();
+  if (!w) return;
+  document.getElementById("nsWsName").textContent = w.name;
+  document.getElementById("nsWsPath").textContent = w.path;
+  renderNsProviders();
+  renderNsModel();
+  showModal("nsModal");
+}
+function renderNsProviders() {
+  document.getElementById("nsProviderGrid").innerHTML = NS_PROVIDERS.map(p =>
+    `<div class="p-card ${p.id === nsProvider ? "active" : ""}" onclick="pickNsProvider('${p.id}')">
+      <div class="p-logo" style="background:${PROVIDER_META[p.id].color}">${p.name[0]}</div>
+      <div><div class="p-name">${p.name}</div><div class="p-sub">${p.sub}</div></div>
+    </div>`).join("");
+}
+function pickNsProvider(id) { nsProvider = id; renderNsProviders(); renderNsModel(); }
+function renderNsModel() {
+  const p = NS_PROVIDERS.find(x => x.id === nsProvider);
+  document.getElementById("nsModel").innerHTML =
+    p.models.map(m => `<option value="${m}">${m}</option>`).join("");
+}
+function createSession() {
+  const w = ws();
+  if (!w) return;
+  const model = document.getElementById("nsModel").value;
+  const id = `s${Date.now().toString(36)}`;
+  const session = {
+    id, provider: nsProvider,
+    title: `${PROVIDER_META[nsProvider].name} · 新会话`,
+    time: "刚刚", model, mode: "build", path: w.path,
+    items: [{ t: "md", content: `会话已创建：**${PROVIDER_META[nsProvider].name}** · ${w.path} · ${model}\n\n发送消息开始对话。`, time: "刚刚" }],
+  };
+  w.sessions.push(session);
+  closeModal("nsModal");
+  activeSessionId = id;
+  renderSidebar();
+  renderTabs();
+  renderThread(session);
+}
+
+/* ============ 导入历史会话（页面演示） ============ */
+const IMP_HISTORY = {
+  pi: [
+    { id: "hp1", provider: "pi", title: "梳理 provider 目录结构", cwd: "~/projects/agent-console", time: "3 天前", resumable: true },
+    { id: "hp2", provider: "pi", title: "Pi MCP 配置调研", cwd: "~/projects/mcp-lab", time: "上周", resumable: true },
+    { id: "hp3", provider: "pi", title: "旧项目：样式重构", cwd: "~/projects/legacy-web", time: "上月", resumable: false },
+  ],
+  codex: [
+    { id: "hc1", provider: "codex", title: "tree-kill 调研（早期）", cwd: "~/projects/agent-console", time: "2 天前", resumable: true },
+    { id: "hc2", provider: "codex", title: "SQLite 会话索引清理", cwd: "~/projects/codex-plus", time: "上周", resumable: true },
+  ],
+  claude: [
+    { id: "hl1", provider: "claude", title: "权限协议文档翻译", cwd: "~/projects/agent-console", time: "4 天前", resumable: true },
+    { id: "hl2", provider: "claude", title: "Paseo 架构笔记", cwd: "~/projects/ai-chat/paseo", time: "上周", resumable: true },
+  ],
+  opencode: [
+    { id: "ho1", provider: "opencode", title: "serve cwd 陷阱验证", cwd: "~/projects/ai-chat/paseo", time: "5 天前", resumable: true },
+  ],
+};
+let impAgents = new Set();
+let impScanned = [];
+let impChecked = new Set();
+
+function openImportModal() {
+  impAgents = new Set();
+  impScanned = [];
+  impChecked = new Set();
+  document.getElementById("impScanStatus").innerHTML = "";
+  document.getElementById("impResults").style.display = "none";
+  document.getElementById("impBtn").disabled = true;
+  renderImpAgents();
+  showModal("impModal");
+}
+function renderImpAgents() {
+  document.getElementById("impAgentGrid").innerHTML = NS_PROVIDERS.map(p => {
+    const on = impAgents.has(p.id);
+    return `<div class="p-card ${on ? "active" : ""}" onclick="toggleImpAgent('${p.id}')">
+      <div class="p-logo" style="background:${PROVIDER_META[p.id].color}">${p.name[0]}</div>
+      <div><div class="p-name">${p.name}</div><div class="p-sub">${p.sub}</div></div>
+    </div>`;
+  }).join("");
+}
+function toggleImpAgent(id) {
+  if (impAgents.has(id)) impAgents.delete(id);
+  else impAgents.add(id);
+  renderImpAgents();
+  document.getElementById("impScanStatus").innerHTML = "";
+  document.getElementById("impResults").style.display = "none";
+  document.getElementById("impBtn").disabled = true;
+}
+function startScan() {
+  if (!impAgents.size) {
+    document.getElementById("impScanStatus").innerHTML = "请先选择至少一个 Agent";
+    return;
+  }
+  const names = [...impAgents].map(a => PROVIDER_META[a].name).join("、");
+  document.getElementById("impScanStatus").innerHTML = `<span class="spinner"></span> 正在扫描 ${names} 的本地会话存储…`;
+  document.getElementById("impScanBtn").disabled = true;
+  setTimeout(() => {
+    impScanned = [...impAgents].flatMap(a => IMP_HISTORY[a] ?? []);
+    impChecked = new Set(impScanned.filter(s => s.resumable).map(s => s.id));
+    document.getElementById("impScanBtn").disabled = false;
+    document.getElementById("impScanStatus").innerHTML = "扫描完成";
+    document.getElementById("impTotal").textContent = impScanned.length;
+    renderImpList();
+    document.getElementById("impResults").style.display = "block";
+    updateImpBtn();
+  }, 1200);
+}
+function renderImpList() {
+  document.getElementById("impList").innerHTML = impScanned.map(s => `
+    <label class="imp-row">
+      <input type="checkbox" ${impChecked.has(s.id) ? "checked" : ""} onchange="toggleImpChecked('${s.id}', this.checked)" />
+      <span class="dotp" style="background:${PROVIDER_META[s.provider].color}"></span>
+      <span class="i-main">
+        <div class="i-title">${esc(s.title)}</div>
+        <div class="i-cwd">${esc(s.cwd)}</div>
+      </span>
+      <span class="i-meta">
+        <span class="i-time">${s.time}</span>
+        <span class="i-badge ${s.resumable ? "" : "gone"}">${s.resumable ? "可恢复" : "项目已移动"}</span>
+      </span>
+    </label>`).join("");
+}
+function toggleImpChecked(id, on) {
+  if (on) impChecked.add(id); else impChecked.delete(id);
+  updateImpBtn();
+}
+function toggleSelectAll() {
+  const selectable = impScanned.filter(s => s.resumable);
+  const allOn = selectable.length > 0 && selectable.every(s => impChecked.has(s.id));
+  impChecked = new Set(allOn ? [] : selectable.map(s => s.id));
+  renderImpList();
+  updateImpBtn();
+}
+function updateImpBtn() {
+  const btn = document.getElementById("impBtn");
+  btn.disabled = impChecked.size === 0;
+  btn.textContent = impChecked.size ? `导入 ${impChecked.size} 个会话` : "导入";
+}
+function doImport() {
+  const picked = impScanned.filter(s => impChecked.has(s.id));
+  for (const s of picked) {
+    let w = WORKSPACES.find(x => x.path === s.cwd);
+    if (!w) {
+      const name = s.cwd.split("/").pop() || "project";
+      w = { id: `w${WORKSPACES.length + 1}`, name, path: s.cwd, sessions: [] };
+      WORKSPACES.push(w);
+    }
+    w.sessions.push({
+      id: s.id, provider: s.provider, title: s.title, time: s.time,
+      model: "—", mode: "—", path: s.cwd, imported: true,
+      items: [{ t: "md", content: `已从 **${PROVIDER_META[s.provider].name}** 历史会话导入。\n\n- 项目：\`${s.cwd}\`\n- 状态：${s.resumable ? "可恢复对话" : "项目已移动，无法恢复"}`, time: s.time }],
+    });
+  }
+  closeModal("impModal");
+  activeWsId = WORKSPACES.find(x => x.path === picked[0].cwd)?.id ?? activeWsId;
+  activeSessionId = ws()?.sessions.find(x => x.id === picked[0].id)?.id ?? null;
+  renderSidebar();
+  renderTabs();
+  renderThread(session());
+}
+
+/* 模态辅助 */
+function showModal(id) { document.getElementById(id).style.display = "flex"; }
+function closeModal(id) { document.getElementById(id).style.display = "none"; }
+
+/* init */
+const ta = document.getElementById("input");
+ta.addEventListener("input", () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 180) + "px"; });
+ta.addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); userSend(); } });
+renderSidebar();
+renderTabs();
+renderThread(session());
+</script>
+</body>
+</html>
