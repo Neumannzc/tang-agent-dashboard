@@ -32,8 +32,8 @@ logs/
 .env.*.local
 
 # Desktop build outputs
-desktop/release/
-desktop/*.exe
+packages/desktop/dist-app/
+packages/desktop/staging/
 
 # Test coverage
 coverage/

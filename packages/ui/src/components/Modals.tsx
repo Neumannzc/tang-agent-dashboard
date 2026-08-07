@@ -83,7 +83,22 @@ export function NewWorkspaceModal(props: {
                   if (e.key === "Enter") confirm();
                 }}
               />
-              <button className="btn" onClick={() => alert("桌面端：系统目录选择器（preload IPC，M3）")}>
+              <button
+                className="btn"
+                onClick={async () => {
+                  if (window.tang) {
+                    try {
+                      const picked = await window.tang.openDirectory();
+                      if (picked) {
+                        setCwd(picked);
+                      }
+                    } catch (error) {
+                      // 降级为提示，不阻止用户手输
+                      console.warn("[ui] openDirectory 失败:", error);
+                    }
+                  }
+                }}
+              >
                 浏览…
               </button>
             </div>

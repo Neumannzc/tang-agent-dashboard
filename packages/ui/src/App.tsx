@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentPermissionRequest, AgentProvider, SessionSummary } from "@agent-console/protocol";
-import { DaemonClient, DEFAULT_WS_URL } from "./ws.js";
+import { DaemonClient, resolveDaemonWsUrl } from "./ws.js";
 import { applyEvent, buildWorkspaces, sessionCwd } from "./state.js";
 import type { ThreadItem } from "./state.js";
 import { Sidebar } from "./components/Sidebar.js";
@@ -77,7 +77,7 @@ export function App() {
 
     const connect = async () => {
       try {
-        const url = new URLSearchParams(window.location.search).get("ws") ?? DEFAULT_WS_URL;
+        const url = await resolveDaemonWsUrl();
         await client.connect(url);
         if (cancelled) {
           return;
@@ -133,12 +133,23 @@ export function App() {
       scheduleReconnect();
     };
 
+    // 桌面壳推送的 daemon 异常退出事件：立即断开 + 显示明确恢复提示
+    let unsubscribeExit: (() => void) | undefined;
+    if (window.tang) {
+      unsubscribeExit = window.tang.onDaemonExit((info) => {
+        const reason = info.signal ? `signal=${info.signal}` : `code=${info.code}`;
+        setConnected(false);
+        setError(`daemon 异常退出（${reason}）。请重启桌面应用。`);
+      });
+    }
+
     void connect();
     return () => {
       cancelled = true;
       if (reconnectTimer !== undefined) {
         clearTimeout(reconnectTimer);
       }
+      unsubscribeExit?.();
       client.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

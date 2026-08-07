@@ -24,22 +24,24 @@
 
 ---
 
-## 2. 现状盘点（并行进程已交付，迁移基础）
+## 2. 现状盘点（迁移已完成）
 
 | 模块 | 状态 | 位置 |
 |---|---|---|
 | daemon ws-server / agent-manager / session-store | ✅ 已实现 | `packages/daemon/src/` |
-| daemon static-server（serve UI 静态产物） | ✅ 已实现 | `packages/daemon/src/static-server.ts` |
+| daemon 仅 WS（无 HTTP/静态服务） | ✅ 已迁移 | `packages/daemon/src/`（static-server 已删除） |
 | protocol 扩展（`SessionSummary`、session.list、resume 等） | ✅ 已实现 | `packages/protocol/src/` |
-| UI：DaemonClient（WS 客户端，`ws://127.0.0.1:8765`） | ✅ 已实现 | `packages/ui/src/ws.ts` |
-| UI：timeline / composer / 权限对话框 / 会话侧边栏 | ✅ 已实现（582 行） | `packages/ui/src/App.tsx` |
-| UI：打字机聚合（assistant_message 按 turnId 替换） | ✅ 已实现 | `App.tsx` `appendTimelineItem` |
-| **desktop：Electron 壳**（spawn daemon → 轮询就绪 → 窗口 loadURL daemon serve 的 UI → 退出回收） | ✅ 已实现 | `packages/desktop/main.cjs` |
-| 根脚本 `scripts/dev.mjs`（并行起 daemon + ui） | ✅ 已实现 | 根目录 |
+| UI：DaemonClient（WS 客户端） | ✅ 已实现（`resolveDaemonWsUrl` 读 preload） | `packages/ui/src/ws.ts` |
+| UI：timeline / composer / 权限对话框 / 会话侧边栏 | ✅ 已实现 | `packages/ui/src/` |
+| **desktop：Electron 壳（模块化 TS）** | ✅ 已迁移 | `packages/desktop/src/` |
+| 自定义协议 `tang-ai-chat://app/`（生产加载） | ✅ 已实现 | `packages/desktop/src/protocol-handler.ts` |
+| daemon 托管（spawn/健康探测/退出清理） | ✅ 已实现 | `packages/desktop/src/daemon-manager.ts` |
+| preload IPC（目录选择器 / 外部链接 / daemon 退出通知） | ✅ 已实现 | `packages/desktop/src/preload.ts` |
+| 窗口状态持久化（位置/尺寸/最大化） | ✅ 已实现 | `packages/desktop/src/window-manager.ts` |
+| electron-builder 打包（Linux 已验证） | ✅ 已实现 | `packages/desktop/electron-builder.yml` |
+| 根脚本 `scripts/dev.mjs`（Vite + Electron） | ✅ 已迁移 | 根目录 |
 
-**desktop 实现差异（并行进程 vs DESKTOP-PLAN）**：并行进程用「daemon 内嵌 static-server 直接 serve UI 产物，窗口 `loadURL(http://127.0.0.1:8765)`」；DESKTOP-PLAN 规划的是「自定义协议 `tang-ai-chat://` 从 resources 读静态产物」。迁移时评估：
-- 并行方案更简单（单端口、无自定义协议），但 UI 依赖 daemon 存活、无深链/目录选择器/窗口持久化
-- 建议保留并行方案的加载方式，按 DESKTOP-PLAN 增量补：目录选择器（preload IPC）、窗口状态持久化、深链（二期）；自定义协议方案作为生产打包时的备选
+**加载方式（已定稿）**：生产用自定义协议 `tang-ai-chat://app/` 从 packaged 资源读静态产物；开发用 Vite(5173) 做 HMR。daemon 仅 WS，不再服务 HTTP。
 
 **缺口**（v2 计划要补的）：品牌/设计系统、markdown 渲染（现为纯文本）、引导页、权限"拒绝并中断"、Electron 壳、目录选择器、深链、状态管理整理、**workspace（项目）层级**（本轮设计变更，见 §5.5）
 
@@ -133,20 +135,21 @@ packages/
 2. ✅ **M0 完成**（2026-08-06 夜）：`npm run dev` 全链路跑通；WS 冒烟（providers.list / sessions.list / agent.create+close / agent.prompt 真实 pi 回合）；确认 SessionStore 磁盘持久化（`~/.agent-console/sessions.json`）、`sessions.list` 带 cwd（workspace 方案 A 可行）
 3. ✅ **M1 + M2.5 完成**：设计系统 CSS（App.css 全量重写）、workspace 重构（App.tsx 按 features 拆分：theme/state/Sidebar/TabsRow/Topbar/Timeline/Composer/PermissionCard/Modals）、react-markdown 渲染、权限内嵌卡 + “拒绝并中断”、新建 workspace/会话模态、导入历史会话 UI（数据源二期）、欢迎页/空项目页
 4. ✅ UI 自动化验证：playwright-core + 系统 chrome 全流程 9/9 通过（欢迎页 → 建 workspace → 建会话 → 发消息 → markdown → 关会话 → 多会话）
-5. ⏳ **待办**：M2 剩余（模型切换仅 UI 层，daemon 无切换方法）；M3 Electron 增强（cwd 目录选择器 preload、窗口持久化、深链）；M4 四 agent 联调 + 打包
+5. ✅ **M3 完成**（2026-08-07，`DESKTOP-MIGRATION-PLAN.md` §9）：Electron 壳模块化、`tang-ai-chat://app/` 协议、daemon 托管、preload IPC（目录选择器/外部链接/daemon 退出通知）、窗口持久化、安全基线、electron-builder 打包（Linux）、Electron E2E（`scripts/e2e-desktop.mjs`，dev-built + packaged 均通过）
+6. ⏳ **待办**：M2 剩余（模型切换仅 UI 层，daemon 无切换方法）；M4 四 agent 联调 + macOS/Windows 打包验证
 
 ## 9.5 问题清单（2026-08-06 记录，不阻塞进度）
 
 | # | 问题 | 状态 | 备注 |
 |---|---|---|---|
-| 1 | dev/desktop 环境 PATH 缺 agent 二进制目录（nvm bin）→ spawn ENOENT | ✅ 已修 | `scripts/dev.mjs` 用 `path.dirname(process.execPath)` 补 PATH；desktop main.cjs 二期同样处理 |
-| 2 | daemon 对不存在 cwd 报 `spawn pi ENOENT`（误导） | 📝 待改 | 应改为清晰错误“cwd 不存在”；新建 workspace 时前端应校验目录存在 |
+| 1 | dev/desktop 环境 PATH 缺 agent 二进制目录（nvm bin）→ spawn ENOENT | ✅ 已修 | `scripts/dev.mjs` 补 PATH；desktop `buildChildEnv` 同样处理（`ELECTRON_RUN_AS_NODE` + node bin 目录） |
+| 2 | daemon 对不存在 cwd 报 `spawn pi ENOENT`（误导） | ✅ 已修 | daemon `agent-manager.createSession` 校验 cwd，报「目录不存在或不可用」 |
 | 3 | `agent.close` 只对已加载（active）会话生效，未加载会话 close 无效 | 📝 待改 | daemon agent-manager 二期处理 |
 | 4 | 模型切换仅 UI 层（改 SessionSummary.model），daemon 无切换方法 | 📝 待补协议 | 二期：agent 侧重启会话换模型 |
 | 5 | 会话标题固定为 provider·model，无用户命名 | 📝 二期 | 与 session rename 一起做 |
 | 6 | 导入历史会话：UI 已定稿，扫描/导入数据源二期（CodexPlusPlus 已验证 codex 侧可读） | ⏳ 二期 | `sessions.scanHistory` / `sessions.importHistory` |
 | 7 | 侧边栏“更多/设置”按钮为占位 | ⏳ 二期 | 健康检查卡片设计（借鉴 CodexPlusPlus health-grid）|
-| 8 | Electron 窗口图标未接（logo.png 已备于 ui/public） | ⏳ M3 | BrowserWindow icon + electron-builder 应用图标 |
+| 8 | Electron 窗口图标未接（logo.png 已备于 ui/public） | ✅ 已修 | desktop assets/icon.png + electron-builder 应用图标 |
 
 ## 10. 运维纪律（事故教训，2026-08-06）
 

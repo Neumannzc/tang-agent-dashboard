@@ -11,6 +11,39 @@ import type {
 
 export const DEFAULT_WS_URL = "ws://127.0.0.1:8765";
 
+/** 桌面壳 preload 桥（类型声明；实现由 Electron 注入 window.tang） */
+export interface DesktopBridge {
+  getConfig(): Promise<{ wsUrl: string; platform: NodeJS.Platform; version: string; mode: "desktop" }>;
+  openDirectory(): Promise<string | null>;
+  openExternal(url: string): Promise<void>;
+  onDaemonExit(listener: (info: { code: number | null; signal: NodeJS.Signals | null }) => void): () => void;
+}
+
+declare global {
+  interface Window {
+    tang?: DesktopBridge;
+  }
+}
+
+/** 解析 daemon WS 端点：优先桌面壳 preload（生产），其次 ?ws=（dev 调试），最后默认 */
+export async function resolveDaemonWsUrl(): Promise<string> {
+  if (typeof window !== "undefined" && window.tang) {
+    try {
+      const cfg = await window.tang.getConfig();
+      return cfg.wsUrl;
+    } catch {
+      // 走下面的兜底
+    }
+  }
+  if (typeof window !== "undefined") {
+    const fromQuery = new URLSearchParams(window.location.search).get("ws");
+    if (fromQuery) {
+      return fromQuery;
+    }
+  }
+  return DEFAULT_WS_URL;
+}
+
 export class DaemonClient {
   private ws: WebSocket | null = null;
   private readonly pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();

@@ -1,8 +1,8 @@
 # Agent Console 开发计划
 
-> 目标：开发一个 Web 中控台，统一与 **Pi、Codex、Claude Code、OpenCode** 四个 agent 对话。
-> 借鉴 Paseo（`/home/tang/project/ai-chat/paseo`）的 provider 抽象与进程治理思路，砍掉不需要的功能（移动端、语音、forge 集成、review、日程、云中继等）。
-> 后期可封装为 desktop（daemon + 壳）。
+> 目标：开发一个 **桌面端** 中控台（Electron），统一与 **Pi、Codex、Claude Code、OpenCode** 四个 agent 对话。
+> 产品形态已收敛为桌面版：浏览器不再作为产品入口（详见 `docs/DESKTOP-MIGRATION-PLAN.md`）。
+> 借鉴 Paseo（`/home/tang/project/ai-chat/paseo`）的 provider 抽象与进程治理思路。
 
 ---
 
@@ -66,9 +66,10 @@
 
 ## 3. 技术栈
 
-- **Monorepo**：npm workspaces（`daemon` / `ui` / `protocol` 三个包）
-- **Daemon**：Node + TypeScript（>=20），pino 日志（可选，先 console）
-- **UI**：React + Vite + TypeScript，原生 WS（不引重框架）
+- **Monorepo**：npm workspaces（`daemon` / `ui` / `protocol` / `desktop` 四个包）
+- **Daemon**：Node + TypeScript（>=20），仅暴露 loopback WebSocket RPC
+- **UI**：React + Vite + TypeScript，原生 WS（不引重框架）；Vite 仅作 Electron 开发期 HMR 工具
+- **桌面壳**：Electron（主进程拉 daemon、`tang-ai-chat://app/` 协议加载打包 UI、preload IPC 桥）
 - **协议**：WS 上 JSON 请求-响应（带 requestId）+ 事件推送（`type` 区分）
 
 ---
@@ -149,31 +150,24 @@
 
 ```bash
 npm install
-npm run dev        # 并行启动 daemon(8765) + UI(5173)
-# 或分开
-npm run dev:daemon
-npm run dev:ui
-
-npm run build      # 构建 protocol + daemon + ui
+npm run dev          # Vite(HMR) + Electron；Electron 自动拉起 daemon，加载 Vite URL
+npm run build        # 构建 protocol + daemon + ui + desktop
+npm run desktop      # 构建后运行桌面壳（dev 场景，tang-ai-chat:// 加载 ui/dist）
 
 # CLI 冒烟测试（Phase 1 验证）
 npx tsx packages/daemon/src/cli-test.ts pi "你好" /tmp/test-cwd
 npx tsx packages/daemon/src/cli-test.ts opencode "你好" /tmp/test-cwd "zrocode/gpt-5.6-luna"
 
-# 浏览器 E2E（需先 npm run dev）
-node scripts/e2e-test.mjs   # 冒烟：建会话 + 对话
-node scripts/e2e-perm.mjs   # 权限对话框流程
+# 桌面 E2E（Electron 窗口内完整流程）
+npm run e2e:desktop
+# 对打包产物验证：
+# E2E_EXECUTABLE=packages/desktop/dist-app/linux-unpacked/@agent-consoledesktop npm run e2e:desktop
+
+# 打包（Linux）
+cd packages/desktop && npm run package   # 产出 dist-app/*.AppImage / *.deb
 ```
 
-浏览器打开 http://127.0.0.1:5173 ，侧边栏选 provider/cwd/模型 → 创建会话 → 对话；工具权限请求会弹出对话框，可允许/拒绝；会话持久化在 `~/.agent-console/sessions.json`，重启 daemon 后可从侧边栏恢复。
-
-**桌面版**（Electron 壳，浏览器版本同源体验）：
-
-```bash
-npm run desktop   # 构建三包后启动 Electron，自动拉起 daemon 并加载本地 UI
-```
-
-daemon 现在同端口提供 HTTP（静态 UI）+ WS：浏览器访问 http://127.0.0.1:8765 即桌面壳加载的同一页面；`npm run dev` 时 Vite(5173) 连接 daemon(8765)。
+**桌面版是唯一入口**：UI 由 Electron 壳通过 `tang-ai-chat://app/` 协议加载（生产）或 Vite（开发 HMR）；daemon 由壳自动拉起并持有，退出时清理 agent 子进程树。daemon 端口仅回环监听，浏览器打开 daemon 端口不会得到 UI。
 
 ## 8. 完成情况
 

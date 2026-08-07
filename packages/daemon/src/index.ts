@@ -1,14 +1,10 @@
-// Agent Console Daemon 入口：常驻进程，持有 agent 子进程，暴露 HTTP(静态 UI) + WS 接口
+// Agent Console Daemon 入口：常驻进程，持有 agent 子进程，仅暴露 WS 接口
+// UI 由 Electron 壳通过 tang-ai-chat://app/ 协议加载，daemon 不再服务 HTTP/静态资源
 // 用法: tsx src/index.ts [--port 8765]
 
-import { createServer, type Server as HttpServer } from "node:http";
-import { existsSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { AgentManager } from "./agent-manager.js";
 import { ensureConfigDir, loadConfig } from "./config.js";
 import { SessionStore } from "./session-store.js";
-import { createStaticHandler } from "./static-server.js";
 import { WsServer } from "./ws-server.js";
 
 const DEFAULT_PORT = 8765;
@@ -26,20 +22,6 @@ function parseArgs(argv: string[]): { port: number | null } {
   return { port };
 }
 
-/** UI 构建产物目录：相对 daemon 源码/产物定位到 packages/ui/dist */
-function resolveUiDist(): string | null {
-  const candidates = [
-    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../ui/dist"),
-    path.resolve(process.cwd(), "packages/ui/dist"),
-  ];
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  return candidates[0] ?? null;
-}
-
 async function main(): Promise<void> {
   const cliPort = parseArgs(process.argv.slice(2)).port;
   const config = loadConfig();
@@ -48,27 +30,19 @@ async function main(): Promise<void> {
 
   const store = new SessionStore();
   const manager = new AgentManager(store, config);
-
-  // HTTP 服务器：静态 UI + WS 同端口
-  const uiDist = resolveUiDist();
-  const handler = createStaticHandler({ distDir: uiDist ?? "packages/ui/dist", dev: !uiDist });
-  const httpServer: HttpServer = createServer((req, res) => {
-    handler(req, res);
-  });
-  const wsServer = new WsServer(manager, { port, server: httpServer });
-
-  await new Promise<void>((resolve, reject) => {
-    httpServer.once("error", reject);
-    httpServer.listen(port, "127.0.0.1", () => resolve());
-  });
-
-  console.log(`[daemon] Agent Console daemon 已启动`);
-  console.log(`[daemon] HTTP(UI) + WS 端口 = ${wsServer.port}`);
-  if (uiDist) {
-    console.log(`[daemon] UI 静态目录 = ${uiDist}`);
-  } else {
-    console.log(`[daemon] 未找到 UI 构建产物（packages/ui/dist），开发模式请用 npm run dev:ui`);
+  const wsServer = new WsServer(manager, { port, host: "127.0.0.1" });
+  try {
+    await wsServer.ready();
+  } catch (error) {
+    console.error(
+      `[daemon] 启动失败：无法监听 ${port}（${error instanceof Error ? error.message : String(error)}）`,
+    );
+    console.error(`[daemon] 请确认端口 ${port} 未被其他进程占用后重试`);
+    process.exit(1);
   }
+
+  console.log(`[daemon] Tang Agent Dashboard daemon 已启动`);
+  console.log(`[daemon] WS 端口 = ${wsServer.port} (loopback only)`);
   console.log(`[daemon] 已注册 provider: ${manager.listProviders().join(", ")}`);
 
   let shuttingDown = false;
@@ -80,7 +54,6 @@ async function main(): Promise<void> {
     console.log(`[daemon] 收到 ${signal}，正在关闭...`);
     try {
       await wsServer.close();
-      await new Promise<void>((resolve) => httpServer.close(() => resolve()));
       await manager.shutdown();
       console.log("[daemon] 已关闭全部会话与子进程");
     } finally {

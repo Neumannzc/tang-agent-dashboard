@@ -1,8 +1,8 @@
 # Desktop 方案调研与规划
 
-> 状态：调研完成，方案待确认
-> 背景：主前端定为 Expo/React Native（一套代码出 iOS/Android/Web），桌面端复用 web 版 + 壳
-> 调研对象：Paseo（本地源码深度调研）、OpenCode、Cherry Studio、Jan、Cursor/Claude Desktop、Tauri 系
+> 状态：**已落地（2026-08-07）**，具体实现与验证见 `DESKTOP-MIGRATION-PLAN.md` §9
+> 背景：早期调研面向 Expo/React Native 三端；随后需求收敛为纯桌面版（Vite + React + Electron，见 `FRONTEND-PLAN.md` v2），本文档保留为方案调研与架构依据
+> 以下 §1 调研结论仍有效（选 Electron 而非 Tauri）；§2 的方案描述以最终实现为准
 
 ---
 
@@ -81,26 +81,26 @@ Cursor 是 VS Code fork（Electron），功能完整但需维护整个编辑器�
 - 本期范围：窗口加载、daemon 自动起停、目录选择对话框、深链、菜单、窗口状态持久化
 - 二期（预留，不实现）：托盘、自动更新、多窗口、系统通知
 
-### 2.2 架构
+### 2.2 架构（最终实现：Vite + React）
 
 ```
-packages/ui (Expo)                    packages/daemon (Node)
-  expo export --platform web              ws-server (127.0.0.1:PORT)
+packages/ui (Vite + React)              packages/daemon (Node)
+  vite build / dev(5173)                    ws-server (127.0.0.1:PORT, loopback only)
   └── dist/* ─────────────────┐               ▲
                               ▼               │ WS (同一协议)
 packages/desktop (Electron)  ┌────────────┐  ┌────────────────┐
-  main.ts ──────────────────►│ BrowserWindow │──┐ spawn / tree-kill
-  protocol.ts (ac:// 静态服务) │  loadURL      │  │
-  daemon-manager.ts ─────────►│  (dev: Metro) │  ▼
-  window-manager.ts           │  (prod: ac://)│ daemon 子进程（四 agent 孙进程）
-  preload.ts (IPC 桥)         └────────────┘
+  src/main.ts ──────────────►│ BrowserWindow │──┐ spawn / tree-kill
+  src/protocol-handler.ts    │  loadURL      │  │
+  src/daemon-manager.ts ─────►│  (dev: Vite)  │  ▼
+  src/window-manager.ts      │  (prod: tang-ai-chat://app/)│ daemon 子进程（四 agent 孙进程）
+  src/preload.ts (IPC 桥)     └────────────┘
 ```
 
-### 2.3 壳加载方式（照抄 Paseo 模式，简化为 3 个文件）
+### 2.3 壳加载方式（最终实现）
 
-- **dev**：`loadURL(Metro dev server)`，Metro + daemon + Electron 并行（concurrently）
-- **prod**：自定义协议 `agent-console://app/` → `resources/app-dist`（Expo 产物），含 SPA fallback + 路径穿越防护
-- **传输**：renderer 直连 `ws://127.0.0.1:<daemon端口>`（daemon 只 bind 127.0.0.1，无需 Paseo 的 local-transport 那套 socket/pipe 抽象——那是为防端口暴露的过度工程，本项目 daemon 本就设计为本地回环）
+- **dev**：`loadURL(http://127.0.0.1:5173)`，Vite 做 renderer HMR；daemon 由 Electron 主进程拉起
+- **prod**：自定义协议 `tang-ai-chat://app/` → `resources/app-dist`（UI 产物），含 SPA fallback + 路径穿越防护（见 `src/protocol-handler.ts`）
+- **传输**：renderer 直连 `ws://127.0.0.1:<daemon端口>`（daemon 只 bind 127.0.0.1）；端口由 Electron 持有（env `AGENT_CONSOLE_PORT` 或默认 8765）
 
 ### 2.4 daemon 生命周期（桌面端核心价值）
 
@@ -161,44 +161,40 @@ electron-builder.yml
 | 系统通知 | 推送（二期） | 浏览器通知（二期） | 桌面通知（二期） |
 | 布局 | compact 单栏 | 响应式分栏 | expanded 分栏 + 桌面菜单 |
 
-### 2.9 monorepo 集成与 dev 工作流
+### 2.9 monorepo 集成与 dev 工作流（最终实现）
 
 ```
-npm run dev:desktop  = concurrently [
-                         daemon (tsx watch + ws-server),
-                         ui (expo start --web),
-                         desktop (electron, 连 Metro)
-                       ]
-npm run build:desktop = expo export --platform web → tsc desktop → electron-builder
+npm run dev        = node scripts/dev.mjs
+                     ├── ui (vite dev server, 5173, renderer HMR)
+                     └── desktop (electron，主进程内拉 daemon，加载 http://127.0.0.1:5173)
+npm run desktop    = npm run build && electron（dev 场景加载 ui/dist 或 Vite）
+npm run package -w @agent-console/desktop = stage（daemon+deps+ui）→ electron-builder（Linux）
 ```
 
-依赖方向：`desktop → ui(dist)`、`desktop → daemon(spawn)`；`ui → protocol`、`daemon → protocol`。desktop 不作为 npm workspace 依赖 ui/daemon 的源码，只消费产物与二进制，避免 metro/electron 配置互相污染。
+依赖方向：`desktop → ui(dist)`、`desktop → daemon(spawn)`；`ui → protocol`、`daemon → protocol`。desktop 不依赖 ui/daemon 源码，只消费产物。
 
-### 2.10 实施顺序与验证
+### 2.10 实施顺序与验证（已完成，2026-08-07）
 
 ```
-D1 壳骨架：desktop 包 + 窗口 + dev 模式 loadURL(Metro)
-   → 验证：dev:desktop 一键起 daemon + Metro + Electron 窗口，UI 可对话
-D2 生产加载：agent-console:// 协议 + SPA fallback + electron-builder 打包
-   → 验证：打包产物可离线运行，刷新/深链路由不 404
-D3 daemon 托管：spawn/health check/退出清理（复用 tree-kill）
-   → 验证：关窗口 daemon 进程树被清干净（ps 检查）
-D4 桌面集成：目录选择对话框 + 深链 + 菜单 + 窗口状态持久化
-   → 验证：新建会话可选目录；agent-console://session/x 唤起直达
+D1 壳骨架：desktop 包 + 窗口 + dev 模式 loadURL(Vite)     → ✅ dev 全链路跑通
+D2 生产加载：tang-ai-chat:// 协议 + SPA fallback + 打包     → ✅ 打包产物离线可跑（E2E 通过）
+D3 daemon 托管：spawn/端口探测/退出清理（tree-kill）       → ✅ 关窗口 daemon 进程树清干净（端口释放验证）
+D4 桌面集成：目录选择对话框 + 窗口状态持久化               → ✅ preload IPC + window-state.json
+D5（后续）深链、菜单、系统通知                            → ⏳ 二期
 ```
 
 ### 2.11 与现有文档的衔接
 
-- `docs/UI-DESIGN.md` §9（原 Electron 壳草稿）→ 以本文档为准
-- PLAN.md：desktop 从"二期"提前到本期；技术栈条目（React+Vite → Expo/RN）需同步更新（待确认后执行）
+- `docs/UI-DESIGN.md` §9（原 Electron 壳草稿）→ 以 `DESKTOP-MIGRATION-PLAN.md` + `FRONTEND-PLAN.md` v2 为准
+- 技术栈已定：Vite + React + Electron（无 Expo/RN）
 
 ---
 
-## 3. 决策清单（待确认）
+## 3. 决策清单（已定稿）
 
 1. ✅ 桌面端 = Electron 壳（Paseo 模式），不引入 Tauri —— 理由见 §1.7
 2. ✅ desktop 包只消费 ui 产物 + daemon 二进制，不依赖两者源码
 3. ✅ 传输用 `ws://127.0.0.1:<port>`，不做 Paseo 的 local-transport 抽象
-4. ⏳ 深链 scheme 命名：`agent-console://`（可改）
-5. ⏳ daemon 端口固定值还是动态分配（health check 探测）——建议动态探测空闲端口 + 配置文件固化
-6. ⏳ mac 签名/公证是否本期配置（需要开发者证书；无证书可先跳过，本地/内部分发）
+4. ✅ 深链 scheme：`tang-ai-chat://`（产品名已定；深链路由本身为二期）
+5. ✅ daemon 端口：固定 8765（env `AGENT_CONSOLE_PORT` 可覆盖），Electron 持有；端口被占时启动失败提示
+6. ✅ mac/win 打包配置已就绪（electron-builder.yml），签名/公证留待发布环境

@@ -1,0 +1,57 @@
+appId: ai.tang-ai-chat.desktop
+productName: Tang Agent Dashboard
+copyright: Copyright © 2026
+directories:
+  output: dist-app
+  buildResources: assets
+
+# 主进程 + preload 编译产物（dist/** 由 tsc 输出）
+files:
+  - dist/**/*
+  - package.json
+  - "node_modules/tree-kill/**"
+  - "!staging/**/*"
+  - "!dist-app/**/*"
+
+# 离线运行时：daemon 产物+deps、UI 产物、图标
+extraResources:
+  - from: staging/app-dist
+    to: app-dist
+    filter: ["**/*"]
+  - from: staging/daemon
+    to: daemon
+    filter: ["**/*"]
+  - from: assets/icon.png
+    to: icon.png
+
+asar: true
+# tree-kill / ws / SDK 都是纯 JS，可保留在 asar 内
+asarUnpack:
+  - "**/node_modules/**/*"
+
+# 单实例锁文件
+protocols:
+  - name: tang-ai-chat
+    schemes:
+      - tang-ai-chat
+
+win:
+  target: nsis
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+mac:
+  target: dmg
+  category: public.app-category.developer-tools
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  hardenedRuntime: false
+  gatekeeperAssess: false
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Development
+  executableName: tang-agent-dashboard
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  desktop:
+    MimeType: x-scheme-handler/tang-ai-chat

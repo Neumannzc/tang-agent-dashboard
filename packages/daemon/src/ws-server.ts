@@ -1,7 +1,6 @@
 // WS 中控服务：请求-响应 + 事件广播（Phase 3 daemon 侧）
-// 可独立监听端口，或附着到已有 http.Server（与静态 UI 同端口）
+// 独立监听 loopback 端口，不与 HTTP 服务器共存（HTTP 静态服务已迁移到 Electron 协议）
 
-import type { Server as HttpServer } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 import type { ClientRequest, ClientResponse } from "@agent-console/protocol";
 import type { AgentManager } from "./agent-manager.js";
@@ -9,30 +8,38 @@ import type { AgentManager } from "./agent-manager.js";
 export interface WsServerOptions {
   port: number;
   host?: string;
-  /** 传入已创建的 http.Server 时附着到它（同端口 HTTP+WS），否则独立监听 */
-  server?: HttpServer;
 }
 
 export class WsServer {
   private readonly wss: WebSocketServer;
   private readonly clients = new Set<WebSocket>();
+  private readonly portHint: number;
+  private readyResolve: (() => void) | null = null;
+  private readyReject: ((error: Error) => void) | null = null;
+  private readonly readyPromise: Promise<void>;
 
   constructor(
     private readonly manager: AgentManager,
     private readonly options: WsServerOptions,
   ) {
-    if (options.server) {
-      this.wss = new WebSocketServer({ server: options.server });
-    } else {
-      this.wss = new WebSocketServer({
-        port: options.port,
-        host: options.host ?? "127.0.0.1",
-      });
-    }
+    this.portHint = options.port;
+    this.readyPromise = new Promise<void>((resolve, reject) => {
+      this.readyResolve = resolve;
+      this.readyReject = reject;
+    });
+    this.wss = new WebSocketServer({
+      port: options.port,
+      host: options.host ?? "127.0.0.1",
+    });
+    // 独立监听模式下，wss.on('listening') 比构造时的同步绑定更可依赖
+    this.wss.on("listening", () => {
+      this.readyResolve?.();
+    });
     this.wss.on("connection", (socket) => this.handleConnection(socket));
-    // http.Server 监听失败（如端口被占用）时 WSS 会同步 re-emit error，兜底避免未捕获异常崩溃
+    // 监听失败（如端口被占用）时 WSS 会同步 re-emit error，拒绝 ready 让上层明确报错退出
     this.wss.on("error", (error) => {
       console.error(`[ws-server] WebSocket 服务错误: ${error.message}`);
+      this.readyReject?.(error);
     });
     // 全局事件 → 广播给所有 WS 客户端
     this.manager.onEvent((event) => {
@@ -47,7 +54,12 @@ export class WsServer {
 
   get port(): number {
     const address = this.wss.address();
-    return typeof address === "object" && address ? address.port : this.options.port;
+    return typeof address === "object" && address ? address.port : this.portHint;
+  }
+
+  /** 等待端口就绪；监听失败（端口占用等）时 reject */
+  ready(): Promise<void> {
+    return this.readyPromise;
   }
 
   async close(): Promise<void> {

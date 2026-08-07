@@ -16,6 +16,7 @@ import type {
 } from "@agent-console/protocol";
 import type { SessionSummary } from "@agent-console/protocol";
 import { createClient, isKnownProvider, listProviders } from "./providers/index.js";
+import { existsSync, statSync } from "node:fs";
 import type { ConsoleConfig, ProviderConfig } from "./config.js";
 import type { SessionStore } from "./session-store.js";
 
@@ -61,6 +62,10 @@ export class AgentManager {
     const client = await this.getClient(config.provider);
     if (!(await client.isAvailable())) {
       throw new Error(`provider 不可用: ${config.provider}（未找到可执行文件或依赖缺失）`);
+    }
+    // 明确校验 cwd，避免 spawn 时报误导性的 ENOENT
+    if (!config.cwd || !existsSync(config.cwd) || !statSync(config.cwd).isDirectory()) {
+      throw new Error(`目录不存在或不可用: ${config.cwd ?? "(空)"}`);
     }
     const session = await client.createSession(config);
     return this.register(session, config);
