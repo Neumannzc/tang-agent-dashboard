@@ -5,7 +5,6 @@ import type {
   AgentMode,
   AgentModelDefinition,
   AgentPermissionResponse,
-  AgentPersistenceHandle,
   AgentPromptInput,
   AgentProvider,
   AgentRunOptions,
@@ -13,12 +12,14 @@ import type {
   AgentSession,
   AgentSessionConfig,
   AgentStreamEvent,
+  HistorySession,
 } from "@agent-console/protocol";
 import type { SessionSummary } from "@agent-console/protocol";
 import { createClient, isKnownProvider, listProviders } from "./providers/index.js";
 import { existsSync, statSync } from "node:fs";
 import type { ConsoleConfig, ProviderConfig } from "./config.js";
-import type { SessionStore } from "./session-store.js";
+import type { SessionStore, StoredSession } from "./session-store.js";
+import { importHistory, scanHistory } from "./history-import.js";
 
 export type ManagedSessionEvent = AgentStreamEvent & { sessionId: string };
 
@@ -45,18 +46,18 @@ export class AgentManager {
   }
 
   listSessions(): SessionSummary[] {
-    return this.store.list().map((stored) => ({
-      sessionId: stored.sessionId,
-      provider: stored.provider as AgentProvider,
-      cwd: stored.cwd,
-      model: stored.model,
-      modeId: stored.modeId,
-      thinkingOptionId: stored.thinkingOptionId,
-      createdAt: stored.createdAt,
-      lastActiveAt: stored.lastActiveAt,
-      active: this.sessions.has(stored.sessionId),
-      handle: stored.handle,
-    }));
+    return this.store.list().map((stored) => this.toSummary(stored));
+  }
+
+  /** 扫描 agent 本地历史会话（只读；与 store 去重标记 imported） */
+  async scanHistory(providers: AgentProvider[]): Promise<HistorySession[]> {
+    return scanHistory(providers, this.store);
+  }
+
+  /** 导入 agent 本地历史会话（未导入过的；幂等） */
+  async importHistory(providers: AgentProvider[]): Promise<{ imported: SessionSummary[]; skipped: number }> {
+    const { imported, skipped } = await importHistory(providers, this.store);
+    return { imported: imported.map((summary) => this.toSummary(summary)), skipped };
   }
 
   async createSession(config: AgentSessionConfig): Promise<SessionSummary> {
@@ -95,10 +96,11 @@ export class AgentManager {
       modeId: config.modeId,
       thinkingOptionId: config.thinkingOptionId,
       systemPrompt: config.systemPrompt,
+      title: stored.title,
       createdAt: stored.createdAt,
       handle: stored.handle,
     });
-    return this.register(session, config, stored.createdAt);
+    return this.register(session, config, stored.createdAt, stored.title);
   }
 
   async prompt(sessionId: string, prompt: AgentPromptInput, options?: AgentRunOptions): Promise<AgentRunResult> {
@@ -214,7 +216,12 @@ export class AgentManager {
     return session;
   }
 
-  private register(session: AgentSession, config: AgentSessionConfig, createdAt?: number): SessionSummary {
+  private register(
+    session: AgentSession,
+    config: AgentSessionConfig,
+    createdAt?: number,
+    title?: string,
+  ): SessionSummary {
     this.sessions.set(session.id, session);
     const handle = session.describePersistence();
     const summary: SessionSummary = {
@@ -224,6 +231,7 @@ export class AgentManager {
       model: config.model,
       modeId: config.modeId,
       thinkingOptionId: config.thinkingOptionId,
+      ...(title ? { title } : {}),
       createdAt: createdAt ?? Date.now(),
       active: true,
       ...(handle ? { handle } : {}),
@@ -236,6 +244,7 @@ export class AgentManager {
       modeId: config.modeId,
       thinkingOptionId: config.thinkingOptionId,
       systemPrompt: config.systemPrompt,
+      ...(title ? { title } : {}),
       createdAt: summary.createdAt,
       ...(handle ? { handle } : {}),
     });
@@ -259,4 +268,27 @@ export class AgentManager {
       subscriber(event);
     }
   }
+
+  /** StoredSession（或其子集）→ SessionSummary；active 以内存会话 map 为准 */
+  private toSummary(stored: SessionLike): SessionSummary {
+    return {
+      sessionId: stored.sessionId,
+      provider: stored.provider as AgentProvider,
+      cwd: stored.cwd,
+      model: stored.model,
+      modeId: stored.modeId,
+      thinkingOptionId: stored.thinkingOptionId,
+      title: stored.title,
+      createdAt: stored.createdAt,
+      lastActiveAt: stored.lastActiveAt,
+      active: this.sessions.has(stored.sessionId),
+      handle: stored.handle,
+    };
+  }
 }
+
+/** StoredSession 与 SessionSummary 共有的展示字段 */
+type SessionLike = Pick<
+  StoredSession,
+  "sessionId" | "provider" | "cwd" | "model" | "modeId" | "thinkingOptionId" | "title" | "createdAt" | "lastActiveAt" | "handle"
+>;

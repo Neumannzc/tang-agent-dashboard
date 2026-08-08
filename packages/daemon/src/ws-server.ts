@@ -178,6 +178,16 @@ export class WsServer {
       case "sessions.list":
         return { sessions: this.manager.listSessions() };
 
+      case "sessions.scanHistory": {
+        const sessions = await this.manager.scanHistory(request.params.providers);
+        return { sessions };
+      }
+
+      case "sessions.importHistory": {
+        const { imported, skipped } = await this.manager.importHistory(request.params.providers);
+        return { imported, skipped };
+      }
+
       case "session.resume": {
         const summary = await this.manager.resumeSession(
           request.params.sessionId,

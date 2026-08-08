@@ -1,9 +1,10 @@
-// 模态：新建 workspace / 导入历史会话（二期占位）
+// 模态：新建 workspace / 导入历史会话
 // "新建会话" 已改 inline draft（NewSessionRow → Composer），不再走 Modal
 
-import { useState } from "react";
-import type { AgentProvider } from "@agent-console/protocol";
+import { useMemo, useState } from "react";
+import type { AgentProvider, HistorySession, SessionSummary } from "@agent-console/protocol";
 import { PROVIDER_META, providerMeta } from "../theme.js";
+import type { DaemonClient } from "../ws.js";
 
 function CloseButton({ onClose }: { onClose: () => void }) {
   return (
@@ -122,27 +123,106 @@ export function NewWorkspaceModal(props: {
   );
 }
 
-// ---------- 导入历史会话（UI 定稿；扫描数据源二期实现） ----------
+// ---------- 导入历史会话 ----------
 
-export function ImportModal(props: { providers: string[]; onClose: () => void }) {
-  const { providers, onClose } = props;
+const UNGROUPED = "(未归组)";
+/** 预览列表单组最多渲染行数（其余仍会导入，仅显示省略提示） */
+const PREVIEW_ROW_CAP = 300;
+
+function formatImportTime(ts: number): string {
+  const diff = Date.now() - ts;
+  if (diff < 60_000) {
+    return "刚刚";
+  }
+  if (diff < 3_600_000) {
+    return `${Math.floor(diff / 60_000)} 分钟前`;
+  }
+  if (diff < 86_400_000) {
+    return `${Math.floor(diff / 3_600_000)} 小时前`;
+  }
+  const d = new Date(ts);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+export function ImportModal(props: {
+  providers: string[];
+  client: DaemonClient;
+  onClose: () => void;
+  onImported: (imported: SessionSummary[]) => void;
+}) {
+  const { providers, client, onClose, onImported } = props;
   const [selected, setSelected] = useState<string[]>([]);
-  const [phase, setPhase] = useState<"idle" | "scanning" | "done">("idle");
+  const [phase, setPhase] = useState<"idle" | "scanning" | "preview" | "importing" | "done">("idle");
+  const [results, setResults] = useState<HistorySession[] | null>(null);
+  const [importedCount, setImportedCount] = useState(0);
+  const [skipped, setSkipped] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   const toggle = (p: string) => {
     setSelected((list) => (list.includes(p) ? list.filter((x) => x !== p) : [...list, p]));
     setPhase("idle");
+    setResults(null);
+    setError(null);
   };
 
-  const scan = () => {
+  const scan = async () => {
     if (selected.length === 0) {
       return;
     }
     setPhase("scanning");
-    window.setTimeout(() => setPhase("done"), 900);
+    setError(null);
+    try {
+      const sessions = await client.scanHistory(selected as AgentProvider[]);
+      setResults(sessions);
+      setPhase("preview");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setPhase("idle");
+    }
+  };
+
+  const doImport = async () => {
+    if (selected.length === 0) {
+      return;
+    }
+    setPhase("importing");
+    setError(null);
+    try {
+      const res = await client.importHistory(selected as AgentProvider[]);
+      setImportedCount(res.imported.length);
+      setSkipped(res.skipped);
+      setPhase("done");
+      onImported(res.imported);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setPhase("preview");
+    }
   };
 
   const names = selected.map((p) => providerMeta(p).name).join("、");
+
+  // 按项目目录归组预览
+  const groups = useMemo(() => {
+    if (!results) {
+      return [];
+    }
+    const map = new Map<string, HistorySession[]>();
+    for (const session of results) {
+      const cwd = session.cwd?.trim() || UNGROUPED;
+      const list = map.get(cwd);
+      if (list) {
+        list.push(session);
+      } else {
+        map.set(cwd, [session]);
+      }
+    }
+    return [...map.entries()];
+  }, [results]);
+
+  const freshCount = results ? results.filter((r) => !r.imported).length : 0;
+  const existingCount = results ? results.length - freshCount : 0;
+  const goneCount = results ? results.filter((r) => !r.recoverable).length : 0;
+  const totalRows = results?.length ?? 0;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -157,7 +237,11 @@ export function ImportModal(props: { providers: string[]; onClose: () => void })
             <ProviderCards providers={providers} selected={selected.join(",")} onPick={toggle} multi />
           </div>
           <div className="scan-row">
-            <button className="btn" onClick={scan} disabled={selected.length === 0 || phase === "scanning"}>
+            <button
+              className="btn"
+              onClick={() => void scan()}
+              disabled={selected.length === 0 || phase === "scanning" || phase === "importing"}
+            >
               <svg className="icon" style={{ width: 13, height: 13 }} viewBox="0 0 24 24">
                 <circle cx="11" cy="11" r="7" />
                 <path d="m21 21-4.3-4.3" />
@@ -170,37 +254,111 @@ export function ImportModal(props: { providers: string[]; onClose: () => void })
                   <span className="spinner" />
                   正在扫描 {names} 的本地会话存储…
                 </>
+              ) : phase === "importing" ? (
+                <>
+                  <span className="spinner" />
+                  正在导入…
+                </>
               ) : phase === "done" ? (
-                "扫描完成"
+                `已导入 ${importedCount} 个，跳过 ${skipped} 个（已存在）`
               ) : (
                 ""
               )}
             </span>
           </div>
+          {error ? (
+            <div className="msg-error" style={{ margin: "0 0 10px", fontSize: 12 }}>
+              {error}
+            </div>
+          ) : null}
           <div className="imp-toolbar">
             <span className="field-label" style={{ margin: 0 }}>
               扫描结果
+              {results ? `（共 ${totalRows} 条）` : ""}
             </span>
             <button
               className="btn"
               style={{ padding: "3px 9px", fontSize: 11.5 }}
-              onClick={() => setPhase("idle")}
-              disabled={phase !== "done"}
+              onClick={() => void scan()}
+              disabled={selected.length === 0 || phase === "scanning" || phase === "importing"}
             >
               重新扫描
             </button>
           </div>
-          <div className="imp-list" style={{ padding: "14px 16px", color: "var(--text-faint)", fontSize: 12.5 }}>
-            历史会话扫描与导入（按项目目录自动归组）将在二期版本提供。
+          <div className="imp-list">
+            {phase === "preview" && results && results.length === 0 ? (
+              <div style={{ padding: "14px 16px", color: "var(--text-faint)", fontSize: 12.5 }}>
+                未发现可导入的历史会话。
+              </div>
+            ) : phase === "preview" && groups.length > 0 ? (
+              groups.map(([cwd, sessions]) => (
+                <div key={cwd}>
+                  <div
+                    className="i-cwd"
+                    style={{ padding: "7px 12px 3px", fontWeight: 600, color: "var(--text-dim)" }}
+                  >
+                    {cwd} · {sessions.length} 条
+                  </div>
+                  {sessions.slice(0, PREVIEW_ROW_CAP).map((session) => {
+                    const meta = providerMeta(session.provider);
+                    return (
+                      <div key={session.id} className="imp-row">
+                        <span className="dotp" style={{ background: meta.color }} />
+                        <div className="i-main">
+                          <div className="i-title">{session.title ?? session.cwd ?? session.id}</div>
+                          <div className="i-cwd">{session.cwd ?? UNGROUPED}</div>
+                        </div>
+                        <div className="i-meta">
+                          <span className="i-time">
+                            {formatImportTime(session.lastActiveAt ?? session.createdAt)}
+                          </span>
+                          {session.imported ? <span className="i-badge gone">已导入</span> : null}
+                          {!session.recoverable ? <span className="i-badge gone">不可恢复</span> : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {sessions.length > PREVIEW_ROW_CAP ? (
+                    <div style={{ padding: "6px 12px", color: "var(--text-faint)", fontSize: 11.5 }}>
+                      … 其余 {sessions.length - PREVIEW_ROW_CAP} 条省略（仍会导入）
+                    </div>
+                  ) : null}
+                </div>
+              ))
+            ) : (
+              <div style={{ padding: "14px 16px", color: "var(--text-faint)", fontSize: 12.5 }}>
+                选择 Agent 后点击「扫描历史会话」。
+              </div>
+            )}
           </div>
-          <div className="modal-hint" style={{ padding: "10px 2px 0" }}>
-            导入的会话将按项目目录自动归组到 workspace；目录不存在的会话标记为不可恢复
+          <div className="modal-hint" style={{ padding: "10px 2px 0", display: "flex", justifyContent: "space-between" }}>
+            <span>导入的会话将按项目目录自动归组到 workspace；目录不存在的会话标记为不可恢复</span>
+            {phase === "preview" && results ? (
+              <span style={{ color: "var(--text-dim)", fontSize: 11.5 }}>
+                新导入 {freshCount} · 已存在 {existingCount} · 不可恢复 {goneCount}
+              </span>
+            ) : null}
           </div>
         </div>
         <div className="modal-foot">
-          <button className="btn btn-danger" onClick={onClose}>
-            关闭
-          </button>
+          {phase === "preview" ? (
+            <>
+              <button className="btn btn-danger" onClick={onClose}>
+                关闭
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={freshCount === 0}
+                onClick={() => void doImport()}
+              >
+                导入全部（{freshCount} 个）
+              </button>
+            </>
+          ) : (
+            <button className="btn btn-primary" onClick={onClose}>
+              {phase === "done" ? "完成" : "关闭"}
+            </button>
+          )}
         </div>
       </div>
     </div>

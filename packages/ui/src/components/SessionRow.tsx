@@ -56,7 +56,7 @@ export function SessionRow(props: SessionRowProps) {
   };
 
   const meta = providerMeta(session.provider);
-  const title = session.model ?? `会话 ${session.sessionId.slice(0, 6)}`;
+  const title = session.title ?? session.model ?? `会话 ${session.sessionId.slice(0, 6)}`;
   const time = formatTime(session.lastActiveAt ?? session.createdAt);
 
   return (

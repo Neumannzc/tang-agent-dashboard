@@ -6,6 +6,7 @@ import type {
   AgentPermissionResponse,
   AgentProvider,
   AgentRunResult,
+  HistorySession,
   ServerPush,
   SessionSummary,
 } from "@agent-console/protocol";
@@ -124,6 +125,18 @@ export class DaemonClient {
 
   sessionsList(): Promise<SessionSummary[]> {
     return this.rpc<{ sessions: SessionSummary[] }>("sessions.list").then((r) => r.sessions);
+  }
+
+  scanHistory(providers: AgentProvider[]): Promise<HistorySession[]> {
+    return this.rpc<{ sessions: HistorySession[] }>("sessions.scanHistory", { providers }).then(
+      (r) => r.sessions,
+    );
+  }
+
+  importHistory(providers: AgentProvider[]): Promise<{ imported: SessionSummary[]; skipped: number }> {
+    return this.rpc<{ imported: SessionSummary[]; skipped: number }>("sessions.importHistory", {
+      providers,
+    });
   }
 
   prompt(sessionId: string, prompt: string): Promise<AgentRunResult> {

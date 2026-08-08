@@ -332,6 +332,21 @@ export function App() {
     });
   }, []);
 
+  /** 导入历史会话完成后：补 workspace + 刷新会话列表 */
+  const handleImported = useCallback(
+    async (imported: SessionSummary[]) => {
+      for (const cwd of new Set(imported.map((s) => s.cwd).filter((c): c is string => Boolean(c)))) {
+        addKnownCwd(cwd);
+      }
+      try {
+        setSessions(await clientRef.current.sessionsList());
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [addKnownCwd],
+  );
+
   const handleCreated = useCallback(
     (session: SessionSummary) => {
       setSessions((list) => [session, ...list.filter((s) => s.sessionId !== session.sessionId)]);
@@ -656,7 +671,12 @@ export function App() {
         />
       ) : null}
       {modal === "import" ? (
-        <ImportModal providers={providers} onClose={() => setModal(null)} />
+        <ImportModal
+          providers={providers}
+          client={clientRef.current}
+          onClose={() => setModal(null)}
+          onImported={(imported) => void handleImported(imported)}
+        />
       ) : null}
       {modal === "settings" ? (
         <SettingsModal onClose={() => setModal(null)} />

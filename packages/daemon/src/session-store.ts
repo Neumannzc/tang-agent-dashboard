@@ -2,7 +2,7 @@
 // 数据库位置：~/.agent-console/sessions.db（WAL 模式）
 // 首次运行时自动从旧版 sessions.json 迁移（成功后归档旧文件）
 
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { mkdirSync, readFileSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -17,6 +17,8 @@ export interface StoredSession {
   modeId?: string;
   thinkingOptionId?: string;
   systemPrompt?: string;
+  /** 会话标题（导入的会话来自 agent 本地历史） */
+  title?: string;
   createdAt: number;
   lastActiveAt?: number;
   /** 各 provider 原生恢复句柄 */
@@ -32,18 +34,19 @@ interface SessionRow {
   mode_id: string | null;
   thinking_option_id: string | null;
   system_prompt: string | null;
+  title: string | null;
   created_at: number;
   last_active_at: number | null;
   handle: string | null;
 }
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const INSERT_SQL = `
   INSERT INTO sessions (
     session_id, provider, cwd, model, mode_id, thinking_option_id, system_prompt,
-    created_at, last_active_at, handle
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    title, created_at, last_active_at, handle
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(session_id) DO UPDATE SET
     provider = excluded.provider,
     cwd = excluded.cwd,
@@ -51,6 +54,7 @@ const INSERT_SQL = `
     mode_id = excluded.mode_id,
     thinking_option_id = excluded.thinking_option_id,
     system_prompt = excluded.system_prompt,
+    title = COALESCE(excluded.title, sessions.title),
     created_at = excluded.created_at,
     last_active_at = excluded.last_active_at,
     handle = excluded.handle
@@ -88,21 +92,25 @@ export class SessionStore {
   }
 
   put(session: StoredSession): void {
-    const now = Date.now();
-    this.db
-      .prepare(INSERT_SQL)
-      .run(
-        session.sessionId,
-        session.provider,
-        session.cwd ?? null,
-        session.model ?? null,
-        session.modeId ?? null,
-        session.thinkingOptionId ?? null,
-        session.systemPrompt ?? null,
-        session.createdAt,
-        session.lastActiveAt ?? now,
-        session.handle ? JSON.stringify(session.handle) : null,
-      );
+    this.db.prepare(INSERT_SQL).run(...toInsertParams(session, Date.now()));
+  }
+
+  /** 批量写入（导入用）：单事务，失败整体回滚 */
+  putMany(sessions: StoredSession[]): void {
+    if (sessions.length === 0) {
+      return;
+    }
+    const insert = this.db.prepare(INSERT_SQL);
+    this.db.exec("BEGIN");
+    try {
+      for (const s of sessions) {
+        insert.run(...toInsertParams(s, Date.now()));
+      }
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   touch(sessionId: string): void {
@@ -123,12 +131,26 @@ export class SessionStore {
         mode_id TEXT,
         thinking_option_id TEXT,
         system_prompt TEXT,
+        title TEXT,
         created_at INTEGER NOT NULL,
         last_active_at INTEGER,
         handle TEXT
       )
     `);
+    this.ensureColumns();
     this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+  }
+
+  /** 幂等列迁移：旧库缺列时 ALTER TABLE 补齐（新库在 CREATE TABLE 里已含） */
+  private ensureColumns(): void {
+    const cols = new Set(
+      (this.db.prepare("PRAGMA table_info(sessions)").all() as { name: string }[]).map((c) => c.name),
+    );
+    if (!cols.has("title")) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN title TEXT");
+    }
+    // 未来归档功能（docs/SESSION-ARCHIVE-PLAN.md）复用同一 helper：
+    // if (!cols.has("archived_at")) this.db.exec("ALTER TABLE sessions ADD COLUMN archived_at INTEGER");
   }
 
   /** 旧版 JSON 一次性迁移：DB 为空且 sessions.json 存在时导入，成功后归档旧文件 */
@@ -164,6 +186,7 @@ export class SessionStore {
             s.modeId ?? null,
             s.thinkingOptionId ?? null,
             s.systemPrompt ?? null,
+            s.title ?? null,
             s.createdAt,
             s.lastActiveAt ?? null,
             s.handle ? JSON.stringify(s.handle) : null,
@@ -199,8 +222,26 @@ function rowToSession(row: SessionRow): StoredSession {
     ...(row.mode_id ? { modeId: row.mode_id } : {}),
     ...(row.thinking_option_id ? { thinkingOptionId: row.thinking_option_id } : {}),
     ...(row.system_prompt ? { systemPrompt: row.system_prompt } : {}),
+    ...(row.title ? { title: row.title } : {}),
     createdAt: row.created_at,
     ...(row.last_active_at != null ? { lastActiveAt: row.last_active_at } : {}),
     ...(handle ? { handle } : {}),
   };
+}
+
+/** INSERT_SQL 的位置参数（与列顺序一一对应） */
+function toInsertParams(session: StoredSession, now: number): SQLInputValue[] {
+  return [
+    session.sessionId,
+    session.provider,
+    session.cwd ?? null,
+    session.model ?? null,
+    session.modeId ?? null,
+    session.thinkingOptionId ?? null,
+    session.systemPrompt ?? null,
+    session.title ?? null,
+    session.createdAt,
+    session.lastActiveAt ?? now,
+    session.handle ? JSON.stringify(session.handle) : null,
+  ];
 }
