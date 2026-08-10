@@ -92,7 +92,7 @@ packages/ui (React + Vite) ──WS──► packages/daemon (Node/TS, 127.0.0.1
 
 ## 测试
 
-- 没有传统的 unit test 套件。冒烟靠 `cli-test.ts`（provider 真实回合）；UI 自动化 `scripts/e2e-desktop.mjs`（Playwright-core + 系统 Chromium，9/9 通过）。headless Linux 使用 `xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" npm run test:e2e:desktop`；打包产物使用同一 Xvfb 前缀运行 `npm run test:e2e:packaged`，其可执行文件为 `packages/desktop/dist-app/linux-unpacked/tang-agent-dashboard`。
+- daemon/desktop 的 unit test 套件使用 `node:test` + `tsx`，通过 `npm run test` 运行。冒烟靠 `cli-test.ts`（provider 真实回合）；UI 自动化 `scripts/e2e-desktop.mjs`（Playwright-core + 系统 Chromium，9/9 通过）。headless Linux 使用 `xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" npm run test:e2e:desktop`；打包产物使用同一 Xvfb 前缀运行 `npm run test:e2e:packaged`，其可执行文件为 `packages/desktop/dist-app/linux-unpacked/tang-agent-dashboard`。
 - UI 自动化跑在打包后的 Electron 窗口里，覆盖欢迎页→建 workspace→建会话→发消息→markdown→关会话→多会话全链路。
 
 ## 设计系统速查
