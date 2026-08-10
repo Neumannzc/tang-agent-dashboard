@@ -10,6 +10,7 @@ import {
   WINDOW_MIN_HEIGHT,
   WINDOW_MIN_WIDTH,
 } from "./config.js";
+import { isSafeExternalUrl } from "./external-url.js";
 
 interface PersistedWindowState {
   bounds?: Rectangle;
@@ -124,6 +125,9 @@ export function createMainWindow(options: CreateMainWindowOptions): BrowserWindo
   });
   // 拦截 window.open / target=_blank → 走 shell
   window.webContents.setWindowOpenHandler(({ url }) => {
+    if (!isSafeExternalUrl(url)) {
+      return { action: "deny" };
+    }
     void shellOpenExternal(url);
     return { action: "deny" };
   });
@@ -134,7 +138,9 @@ export function createMainWindow(options: CreateMainWindowOptions): BrowserWindo
       return;
     }
     event.preventDefault();
-    void shellOpenExternal(url);
+    if (isSafeExternalUrl(url)) {
+      void shellOpenExternal(url);
+    }
   });
 
   mainWindow = window;

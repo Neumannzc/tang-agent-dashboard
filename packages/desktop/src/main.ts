@@ -14,6 +14,7 @@ import path from "node:path";
 
 import { APP_NAME, buildDesktopConfig, createDaemonToken, DAEMON_DEFAULT_PORT, DAEMON_PORT_ENV, DEV_VITE_URL } from "./config.js";
 import { DaemonManager } from "./daemon-manager.js";
+import { isSafeExternalUrl } from "./external-url.js";
 import {
   appUrl,
   registerAppProtocolHandler,
@@ -85,7 +86,7 @@ if (!gotLock) {
   });
 
   ipcMain.handle("tang:open-external", async (_event, url: string) => {
-    if (typeof url !== "string" || !/^https?:\/\//i.test(url)) {
+    if (!isSafeExternalUrl(url)) {
       return;
     }
     await shell.openExternal(url);
