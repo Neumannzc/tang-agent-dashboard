@@ -116,8 +116,8 @@ export class AgentManager {
       throw new Error("会话正在运行中，请先中断或等待完成");
     }
     this.running.add(sessionId);
-    this.store.touch(sessionId);
     try {
+      this.store.touch(sessionId);
       return await session.run(prompt, options);
     } finally {
       this.running.delete(sessionId);

@@ -96,6 +96,19 @@ class FakeClient implements AgentClient {
   async shutdown(): Promise<void> {}
 }
 
+class ThrowingTouchStore extends SessionStore {
+  readonly failure = new Error("touch failed");
+  private throwsOnNextTouch = true;
+
+  override touch(sessionId: string): void {
+    if (this.throwsOnNextTouch) {
+      this.throwsOnNextTouch = false;
+      throw this.failure;
+    }
+    super.touch(sessionId);
+  }
+}
+
 function createManager(tempDir: string, session: FakeSession): { readonly manager: AgentManager; readonly store: SessionStore } {
   const store = new SessionStore(path.join(tempDir, "sessions.db"));
   const client = new FakeClient(session);
@@ -149,6 +162,26 @@ test("clears the running mark after a failed prompt", async (context) => {
   await assert.rejects(manager.prompt(summary.sessionId, "first"), failure);
 
   // Then: the subsequent prompt is permitted
+  await assert.doesNotReject(manager.prompt(summary.sessionId, "second"));
+});
+
+test("clears the running mark after touch fails", async (context) => {
+  // Given: a real store that fails its first touch while preserving registration writes
+  const tempDir = mkdtempSync(path.join(tmpdir(), "agent-console-manager-"));
+  const session = new FakeSession();
+  const store = new ThrowingTouchStore(path.join(tempDir, "sessions.db"));
+  const client = new FakeClient(session);
+  const manager = new AgentManager(store, {}, () => client);
+  context.after(() => {
+    store.close();
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+  const summary = await manager.createSession({ provider: "pi", cwd: tempDir });
+
+  // When: touching the session before a prompt throws
+  await assert.rejects(manager.prompt(summary.sessionId, "first"), store.failure);
+
+  // Then: the failed touch releases the session for a later prompt
   await assert.doesNotReject(manager.prompt(summary.sessionId, "second"));
 });
 
