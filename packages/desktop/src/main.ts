@@ -12,7 +12,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-import { APP_NAME, DAEMON_DEFAULT_PORT, DAEMON_PORT_ENV, DEV_VITE_URL } from "./config.js";
+import { APP_NAME, buildDesktopConfig, createDaemonToken, DAEMON_DEFAULT_PORT, DAEMON_PORT_ENV, DEV_VITE_URL } from "./config.js";
 import { DaemonManager } from "./daemon-manager.js";
 import {
   appUrl,
@@ -44,7 +44,8 @@ if (!gotLock) {
 
   const DEV_MODE = (!app.isPackaged && !process.argv.includes("--prod-ui")) || process.argv.includes("--dev");
   const daemonPort = readDaemonPort();
-  const daemon = new DaemonManager({ port: daemonPort });
+  const daemonToken = createDaemonToken();
+  const daemon = new DaemonManager({ port: daemonPort, token: daemonToken });
 
   let cleanedUp = false;
   const cleanup = async (reason: string) => {
@@ -64,11 +65,11 @@ if (!gotLock) {
   });
 
   // ----- IPC handler：preload ↔ main -----
-  ipcMain.handle("tang:get-config", (): DesktopConfig => ({
+  ipcMain.handle("tang:get-config", (): DesktopConfig => buildDesktopConfig({
     wsUrl: daemon.wsUrl,
+    token: daemonToken,
     platform: process.platform,
     version: app.getVersion(),
-    mode: "desktop",
   }));
 
   ipcMain.handle("tang:open-directory", async (event) => {

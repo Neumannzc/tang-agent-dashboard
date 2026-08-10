@@ -1,7 +1,10 @@
 // desktop 配置常量：协议 scheme、端口、dev URL 等
 // 单点真源，main / preload / daemon-manager 都引用这里
 
+import { randomBytes } from "node:crypto";
 import path from "node:path";
+
+import type { DesktopConfig } from "./preload.js";
 
 /** 自定义协议 scheme（与产品名 tang-ai-chat 对齐） */
 export const PROTOCOL_SCHEME = "tang-ai-chat";
@@ -12,6 +15,7 @@ export const APP_NAME = "Tang Agent Dashboard";
 /** daemon 端口：env 覆盖 > 默认 */
 export const DAEMON_DEFAULT_PORT = 8765;
 export const DAEMON_PORT_ENV = "AGENT_CONSOLE_PORT";
+export const DAEMON_WS_TOKEN_ENV = "AGENT_CONSOLE_WS_TOKEN";
 
 /** dev 模式 Vite dev server 地址（renderer HMR） */
 export const DEV_VITE_URL = "http://127.0.0.1:5173";
@@ -39,6 +43,19 @@ export function buildChildEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv 
     PATH: [process.env.PATH, binDir].filter(Boolean).join(path.delimiter),
     ...extra,
   };
+}
+
+export function createDaemonToken(): string {
+  return randomBytes(32).toString("hex");
+}
+
+export function buildDesktopConfig(options: {
+  readonly wsUrl: string;
+  readonly token: string;
+  readonly platform: NodeJS.Platform;
+  readonly version: string;
+}): DesktopConfig {
+  return { ...options, mode: "desktop" };
 }
 
 /** 当前文件目录（compiled JS 时为 dist/） */

@@ -15,7 +15,7 @@ export const DEFAULT_WS_URL = "ws://127.0.0.1:8765";
 
 /** 桌面壳 preload 桥（类型声明；实现由 Electron 注入 window.tang） */
 export interface DesktopBridge {
-  getConfig(): Promise<{ wsUrl: string; platform: NodeJS.Platform; version: string; mode: "desktop" }>;
+  getConfig(): Promise<{ readonly wsUrl: string; readonly token: string; readonly platform: NodeJS.Platform; readonly version: string; readonly mode: "desktop" }>;
   openDirectory(): Promise<string | null>;
   openExternal(url: string): Promise<void>;
   onDaemonExit(listener: (info: { code: number | null; signal: NodeJS.Signals | null }) => void): () => void;
@@ -32,7 +32,7 @@ export async function resolveDaemonWsUrl(): Promise<string> {
   if (typeof window !== "undefined" && window.tang) {
     try {
       const cfg = await window.tang.getConfig();
-      return cfg.wsUrl;
+      return appendTokenToWsUrl(cfg.wsUrl, cfg.token);
     } catch {
       // 走下面的兜底
     }
@@ -44,6 +44,15 @@ export async function resolveDaemonWsUrl(): Promise<string> {
     }
   }
   return DEFAULT_WS_URL;
+}
+
+export function appendTokenToWsUrl(wsUrl: string, token: string | undefined): string {
+  if (token === undefined) {
+    return wsUrl;
+  }
+  const url = new URL(wsUrl);
+  url.searchParams.set("token", token);
+  return url.toString();
 }
 
 export class DaemonClient {

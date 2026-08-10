@@ -11,7 +11,14 @@ import treeKill from "tree-kill";
 
 import { app } from "electron";
 
-import { buildChildEnv, DAEMON_PORT_ENV, DAEMON_READY_TIMEOUT_MS, DAEMON_SHUTDOWN_GRACE_MS, RUNTIME_DIR } from "./config.js";
+import {
+  buildChildEnv,
+  DAEMON_PORT_ENV,
+  DAEMON_READY_TIMEOUT_MS,
+  DAEMON_SHUTDOWN_GRACE_MS,
+  DAEMON_WS_TOKEN_ENV,
+  RUNTIME_DIR,
+} from "./config.js";
 
 const POLL_INTERVAL_MS = 250;
 
@@ -46,7 +53,8 @@ function resolveDaemonEntry(): { command: string; args: string[]; nodePath?: str
 }
 
 export interface DaemonManagerOptions {
-  port: number;
+  readonly port: number;
+  readonly token: string;
 }
 
 export class DaemonManager extends EventEmitter {
@@ -81,6 +89,7 @@ export class DaemonManager extends EventEmitter {
     console.log(`[desktop] 启动 daemon: ${command} ${finalArgs.join(" ")}`);
     const env = buildChildEnv({
       [DAEMON_PORT_ENV]: String(this.options.port),
+      [DAEMON_WS_TOKEN_ENV]: this.options.token,
       // 关键：Electron 主进程的 process.execPath 是 electron 二进制，
       // 必须用 ELECTRON_RUN_AS_NODE=1 让子进程以纯 Node 模式跑 daemon
       ELECTRON_RUN_AS_NODE: "1",

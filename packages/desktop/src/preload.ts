@@ -5,13 +5,14 @@ import { contextBridge, ipcRenderer } from "electron";
 
 export interface DesktopConfig {
   /** daemon WS 端点（loopback） */
-  wsUrl: string;
+  readonly wsUrl: string;
+  readonly token: string;
   /** 运行平台 */
-  platform: NodeJS.Platform;
+  readonly platform: NodeJS.Platform;
   /** 桌面壳版本 */
-  version: string;
+  readonly version: string;
   /** 当前运行模式 */
-  mode: "desktop";
+  readonly mode: "desktop";
 }
 
 const api = {
