@@ -33,6 +33,7 @@ export class AgentManager {
   constructor(
     private readonly store: SessionStore,
     private readonly config: ConsoleConfig = {},
+    private readonly clientFactory: (provider: string, providerConfig?: ProviderConfig) => AgentClient | null = createClient,
   ) {}
 
   onEvent(callback: (event: ManagedSessionEvent) => void): () => void {
@@ -204,7 +205,7 @@ export class AgentManager {
     if (this.config.providers?.[provider]?.enabled === false) {
       throw new Error(`provider 已禁用: ${provider}`);
     }
-    const client = createClient(provider, this.config.providers?.[provider] as ProviderConfig | undefined);
+    const client = this.clientFactory(provider, this.config.providers?.[provider] as ProviderConfig | undefined);
     if (!client) {
       throw new Error(`未知 provider: ${provider}`);
     }
