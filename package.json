@@ -11,12 +11,15 @@
     "typecheck": "npm run build",
     "test": "npm run test -w @agent-console/daemon",
     "test:e2e:daemon": "npm run build -w @agent-console/protocol && npm run build -w @agent-console/daemon && node scripts/e2e-daemon.mjs",
+    "test:e2e:desktop": "npm run build && node scripts/e2e-desktop.mjs",
+    "test:e2e:packaged": "npm run build && npm run package:dir -w @agent-console/desktop && test -x packages/desktop/dist-app/linux-unpacked/tang-agent-dashboard && E2E_EXECUTABLE=packages/desktop/dist-app/linux-unpacked/tang-agent-dashboard npm run test:e2e:desktop",
+    "ci": "npm run typecheck && npm run test && npm run test:e2e:daemon && npm run test:e2e:desktop",
     "build:desktop": "npm run build -w @agent-console/desktop",
     "dev": "node scripts/dev.mjs",
     "dev:ui": "npm run dev -w @agent-console/ui",
     "start": "npm run start -w @agent-console/desktop",
     "desktop": "npm run build && npm run start",
-    "e2e:desktop": "npm run build && node scripts/e2e-desktop.mjs"
+    "e2e:desktop": "npm run test:e2e:desktop"
   },
   "engines": {
     "node": ">=20"
