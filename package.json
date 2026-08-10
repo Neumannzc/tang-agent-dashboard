@@ -8,6 +8,8 @@
   ],
   "scripts": {
     "build": "npm run build -w @agent-console/protocol && npm run build -w @agent-console/daemon && npm run build -w @agent-console/ui && npm run build -w @agent-console/desktop",
+    "typecheck": "npm run build",
+    "test": "npm run test -w @agent-console/daemon",
     "build:desktop": "npm run build -w @agent-console/desktop",
     "dev": "node scripts/dev.mjs",
     "dev:ui": "npm run dev -w @agent-console/ui",

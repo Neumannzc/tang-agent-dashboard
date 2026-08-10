@@ -2,12 +2,16 @@
 // 独立监听 loopback 端口，不与 HTTP 服务器共存（HTTP 静态服务已迁移到 Electron 协议）
 
 import { WebSocket, WebSocketServer } from "ws";
-import type { ClientRequest, ClientResponse } from "@agent-console/protocol";
+import type { ClientRequest, ClientResponse, RpcErrorCode } from "@agent-console/protocol";
 import type { AgentManager } from "./agent-manager.js";
 
 export interface WsServerOptions {
   port: number;
   host?: string;
+}
+
+class UnknownMethodError extends Error {
+  readonly code: RpcErrorCode = "UNKNOWN_METHOD";
 }
 
 export class WsServer {
@@ -78,6 +82,7 @@ export class WsServer {
         this.send(socket, {
           id: -1,
           ok: false,
+          code: "INTERNAL",
           error: error instanceof Error ? error.message : String(error),
         });
       });
@@ -95,11 +100,11 @@ export class WsServer {
     try {
       request = JSON.parse(raw);
     } catch {
-      this.send(socket, { id: -1, ok: false, error: "invalid JSON" });
+      this.send(socket, { id: -1, ok: false, code: "INVALID_JSON", error: "invalid JSON" });
       return;
     }
     if (typeof request.id !== "number" || typeof request.method !== "string") {
-      this.send(socket, { id: -1, ok: false, error: "missing id or method" });
+      this.send(socket, { id: -1, ok: false, code: "INVALID_REQUEST", error: "missing id or method" });
       return;
     }
     try {
@@ -109,6 +114,7 @@ export class WsServer {
       this.send(socket, {
         id: request.id,
         ok: false,
+        code: error instanceof UnknownMethodError ? error.code : "INTERNAL",
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -197,7 +203,7 @@ export class WsServer {
       }
 
       default:
-        throw new Error(`未知方法: ${(request as { method: string }).method}`);
+        throw new UnknownMethodError(`未知方法: ${(request as { method: string }).method}`);
     }
   }
 
