@@ -78,7 +78,12 @@ mac/win 已配置 `electron-builder.yml`，签名留待发布环境。
 ### 端到端测试
 
 ```bash
-npm run e2e:desktop
+# Headless Linux 需要 Xvfb
+xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" npm run test:e2e:desktop
+
+# 验证 linux-unpacked 打包产物
+xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" npm run test:e2e:packaged
+# 使用 packages/desktop/dist-app/linux-unpacked/tang-agent-dashboard
 ```
 
 Playwright-core + 系统 Chromium，跑在打包后的 Electron 窗口里，覆盖欢迎页 → 建 workspace → 建会话 → 发消息 → markdown → 关会话 → 多会话全链路（9/9 通过）。

@@ -159,9 +159,10 @@ npx tsx packages/daemon/src/cli-test.ts pi "你好" /tmp/test-cwd
 npx tsx packages/daemon/src/cli-test.ts opencode "你好" /tmp/test-cwd "zrocode/gpt-5.6-luna"
 
 # 桌面 E2E（Electron 窗口内完整流程）
-npm run e2e:desktop
+xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" npm run test:e2e:desktop
 # 对打包产物验证：
-# E2E_EXECUTABLE=packages/desktop/dist-app/linux-unpacked/@agent-consoledesktop npm run e2e:desktop
+xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" npm run test:e2e:packaged
+# 该脚本使用 packages/desktop/dist-app/linux-unpacked/tang-agent-dashboard
 
 # 打包（Linux）
 cd packages/desktop && npm run package   # 产出 dist-app/*.AppImage / *.deb

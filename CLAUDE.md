@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | `npm run dev` | `node scripts/dev.mjs`：并行起 Vite(5173) + Electron（主进程拉 daemon） |
 | `npm run dev:ui` | 仅 Vite 渲染端 HMR（daemon 需另起） |
 | `npm run start` / `npm run desktop` | 构建后启动桌面壳 |
-| `npm run e2e:desktop` | 构建 + `node scripts/e2e-desktop.mjs`（Playwright-core + 系统 Chromium） |
+| `npm run test:e2e:desktop` | 构建 + `node scripts/e2e-desktop.mjs`（Playwright-core + 系统 Chromium；headless Linux 经 Xvfb 运行） |
 
 单包：`npm run build -w @agent-console/<pkg>`；daemon 开发态可用 `-w @agent-console/daemon run dev`（`tsx watch src/index.ts`）。
 
@@ -92,7 +92,7 @@ packages/ui (React + Vite) ──WS──► packages/daemon (Node/TS, 127.0.0.1
 
 ## 测试
 
-- 没有传统的 unit test 套件。冒烟靠 `cli-test.ts`（provider 真实回合）；UI 自动化 `scripts/e2e-desktop.mjs`（Playwright-core + 系统 Chromium，9/9 通过）；可针对打包产物设置 `E2E_EXECUTABLE=packages/desktop/dist-app/linux-unpacked/@agent-consoledesktop npm run e2e:desktop`。
+- 没有传统的 unit test 套件。冒烟靠 `cli-test.ts`（provider 真实回合）；UI 自动化 `scripts/e2e-desktop.mjs`（Playwright-core + 系统 Chromium，9/9 通过）。headless Linux 使用 `xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" npm run test:e2e:desktop`；打包产物使用同一 Xvfb 前缀运行 `npm run test:e2e:packaged`，其可执行文件为 `packages/desktop/dist-app/linux-unpacked/tang-agent-dashboard`。
 - UI 自动化跑在打包后的 Electron 窗口里，覆盖欢迎页→建 workspace→建会话→发消息→markdown→关会话→多会话全链路。
 
 ## 设计系统速查
