@@ -1,7 +1,9 @@
 // Codex agent：AgentClient / AgentSession 实现
 // 会话 = 一个 `codex app-server` 子进程，自定义 stdio JSON-RPC
 
-import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcess, ChildProcessWithoutNullStreams } from "node:child_process";
+import { existsSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import type {
   AgentCapabilityFlags,
   AgentClient,
@@ -126,7 +128,7 @@ export class CodexAppServerAgentClient implements AgentClient {
       return session;
     } catch (error) {
       await client.dispose();
-      throw error;
+      throw toReadableSpawnError(error, this.options.command?.[0] ?? "codex");
     }
   }
 
@@ -154,7 +156,7 @@ export class CodexAppServerAgentClient implements AgentClient {
       await client.request("thread/resume", { threadId });
     } catch (error) {
       await client.dispose();
-      throw error;
+      throw toReadableSpawnError(error, this.options.command?.[0] ?? "codex");
     }
     const session = new CodexAppServerAgentSession(client, config, threadId);
     session.setUnexpectedTerminationHandler();
@@ -206,6 +208,8 @@ export class CodexAppServerAgentClient implements AgentClient {
               }
             : {}),
         }));
+    } catch (error) {
+      throw toReadableSpawnError(error, this.options.command?.[0] ?? "codex");
     } finally {
       await client.dispose();
     }
@@ -724,17 +728,59 @@ function mapCodexItemDetail(itemType: string, item: Record<string, unknown>): To
 }
 
 function spawnAppServer(
-  cwd: string,
+  cwd: string | undefined,
   command?: [string, ...string[]],
 ): ChildProcessWithoutNullStreams {
-  const [cmd, ...args] = command ?? ["codex"];
-  const child = spawnProcess(cmd, [...args, "app-server"], {
-    cwd,
-    detached: process.platform !== "win32",
-    stdio: ["pipe", "pipe", "pipe"],
-  });
+  const [cmd = "codex", ...args] = command ?? ["codex"];
+  // 防御：cwd 为空/无效时 spawn 会抛误导性的 ENOENT
+  // （正常流程 resume/create 已在 agent-manager 校验回退，这里兜底直接调用方：回退默认目录后继续）
+  const resolvedCwd = resolveCwd(cwd);
+  let child: ChildProcess;
+  try {
+    child = spawnProcess(cmd, [...args, "app-server"], {
+      cwd: resolvedCwd,
+      detached: process.platform !== "win32",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+  } catch (error) {
+    if (isEnoentError(error)) {
+      throw new Error(codexNotFoundMessage(cmd));
+    }
+    throw error;
+  }
   if (!child.stdin || !child.stdout || !child.stderr) {
     throw new Error("Codex app-server was spawned without stdio streams");
   }
   return child as ChildProcessWithoutNullStreams;
+}
+
+/** 解析 codex 工作目录：无效/空值回退用户主目录（正常路径已由 agent-manager 保证有效） */
+function resolveCwd(cwd: string | undefined): string {
+  if (typeof cwd === "string" && cwd.length > 0 && existsSync(cwd) && statSync(cwd).isDirectory()) {
+    return cwd;
+  }
+  console.warn(`[codex] 工作目录无效（${cwd ?? "(空)"}），已回退到默认目录 ${homedir()}`);
+  return homedir();
+}
+
+/** spawn ENOENT 判定（同步 throw 与子进程 error 事件共用） */
+function isEnoentError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "ENOENT"
+  );
+}
+
+/** codex 可执行文件未找到 → 可读中文提示（替代裸 spawn codex ENOENT） */
+function codexNotFoundMessage(commandName: string): string {
+  return `未找到 ${commandName} 可执行文件，请确认已安装 codex CLI 或检查配置 providers.codex.command`;
+}
+
+/** spawn 失败（ENOENT 等）→ 可读中文提示；其余错误原样抛出 */
+function toReadableSpawnError(error: unknown, commandName: string): Error {
+  if (isEnoentError(error)) {
+    return new Error(codexNotFoundMessage(commandName));
+  }
+  return error instanceof Error ? error : new Error(String(error));
 }

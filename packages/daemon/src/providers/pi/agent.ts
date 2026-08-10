@@ -210,6 +210,7 @@ export class PiRpcAgentSession implements AgentSession {
   private readonly pendingPermissions = new Map<string, PendingPermission>();
   private activeTurnId: string | null = null;
   private streamingAssistantText = "";
+  private streamingThinkingText = "";
   private activeToolCalls = new Map<string, { name: string; callId: string; args: unknown }>();
   private sessionFile: string | undefined;
   private closed = false;
@@ -252,6 +253,7 @@ export class PiRpcAgentSession implements AgentSession {
     const turnId = ack.requestId ?? `pi_${Date.now()}`;
     this.activeTurnId = turnId;
     this.streamingAssistantText = "";
+    this.streamingThinkingText = "";
     this.emit({ type: "turn_started", provider: "pi", turnId });
     return { turnId };
   }
@@ -370,11 +372,19 @@ export class PiRpcAgentSession implements AgentSession {
           this.streamingAssistantText += delta;
           this.emitTimeline({ type: "assistant_message", text: this.streamingAssistantText });
         } else if (event.assistantMessageEvent.type === "thinking_delta" && delta) {
-          this.emitTimeline({ type: "reasoning", text: delta });
+          // thinking_delta 是增量块，需累加后整体发出（与 text_delta 同款打字机语义）
+          this.streamingThinkingText += delta;
+          this.emitTimeline({ type: "reasoning", text: this.streamingThinkingText });
         }
         break;
       }
       case "message_end": {
+        // 先发思考再发正文，保证 timeline 顺序（思考块在正文之前）
+        const thinking = extractAssistantThinking(event.message);
+        if (thinking) {
+          this.streamingThinkingText = thinking;
+          this.emitTimeline({ type: "reasoning", text: thinking });
+        }
         const text = extractAssistantText(event.message);
         if (text) {
           this.streamingAssistantText = text;
@@ -481,6 +491,20 @@ function extractAssistantText(message: PiAgentMessage): string | undefined {
     (part): part is Extract<PiAssistantContent, { type: "text" }> => part.type === "text",
   );
   const text = parts.map((part) => part.text).join("");
+  return text || undefined;
+}
+
+function extractAssistantThinking(message: PiAgentMessage): string | undefined {
+  if (message.role !== "assistant") {
+    return undefined;
+  }
+  if (typeof message.content === "string") {
+    return undefined;
+  }
+  const parts = message.content.filter(
+    (part): part is Extract<PiAssistantContent, { type: "thinking" }> => part.type === "thinking",
+  );
+  const text = parts.map((part) => part.thinking).join("");
   return text || undefined;
 }
 

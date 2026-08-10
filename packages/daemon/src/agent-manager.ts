@@ -17,6 +17,7 @@ import type {
 import type { SessionSummary } from "@agent-console/protocol";
 import { createClient, isKnownProvider, listProviders } from "./providers/index.js";
 import { existsSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import type { ConsoleConfig, ProviderConfig } from "./config.js";
 import type { SessionStore, StoredSession } from "./session-store.js";
 import { importHistory, scanHistory } from "./history-import.js";
@@ -79,9 +80,12 @@ export class AgentManager {
       throw new Error(`未找到可恢复的会话: ${sessionId}`);
     }
     const client = await this.getClient(stored.provider as AgentProvider);
+    // 导入的历史会话其 cwd 可能来自已删除的目录（spawn 会抛误导性的 ENOENT）。
+    // 校验存在性，无效则逐级回退；warning 里保留原始失效路径便于排查。
+    const resolvedCwd = resolveResumeCwd(stored.cwd, cwd, this.config.defaultCwd);
     const config: AgentSessionConfig = {
       provider: stored.provider as AgentProvider,
-      cwd: cwd ?? stored.cwd ?? process.cwd(),
+      cwd: resolvedCwd,
       ...(stored.model ? { model: stored.model } : {}),
       ...(stored.modeId ? { modeId: stored.modeId } : {}),
       ...(stored.thinkingOptionId ? { thinkingOptionId: stored.thinkingOptionId } : {}),
@@ -292,3 +296,30 @@ type SessionLike = Pick<
   StoredSession,
   "sessionId" | "provider" | "cwd" | "model" | "modeId" | "thinkingOptionId" | "title" | "createdAt" | "lastActiveAt" | "handle"
 >;
+
+/** 解析恢复会话的 cwd：requested → stored → config.defaultCwd → homedir()。
+ *  每级校验存在且为目录；失效/空值记录 warning 并降级，避免 spawn 抛误导性 ENOENT。
+ *  （GUI 启动的 daemon cwd 是启动目录，不算合理默认，故不用 process.cwd()） */
+export function resolveResumeCwd(
+  storedCwd: string | undefined,
+  requestedCwd?: string,
+  defaultCwd?: string,
+): string {
+  const levels: Array<{ label: string; path: string | undefined; requested?: boolean }> = [
+    { label: "显式请求的工作目录", path: requestedCwd, requested: true },
+    { label: "会话原工作目录", path: storedCwd },
+    { label: "配置默认目录", path: defaultCwd },
+  ];
+  for (const { label, path, requested } of levels) {
+    if (typeof path === "string" && path.length > 0) {
+      if (existsSync(path) && statSync(path).isDirectory()) {
+        return path;
+      }
+      console.warn(`[agent-manager] ${label}不存在或不可用（${path}），已回退到下一个默认目录`);
+    } else if (requested && typeof path === "string") {
+      // 显式请求了空串：同样视为无效请求，给出警告再降级
+      console.warn(`[agent-manager] ${label}为空字符串，已回退到下一个默认目录`);
+    }
+  }
+  return homedir();
+}
