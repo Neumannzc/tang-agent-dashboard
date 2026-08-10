@@ -1,13 +1,17 @@
 // WS 中控服务：请求-响应 + 事件广播（Phase 3 daemon 侧）
 // 独立监听 loopback 端口，不与 HTTP 服务器共存（HTTP 静态服务已迁移到 Electron 协议）
 
-import { WebSocket, WebSocketServer } from "ws";
+import { timingSafeEqual } from "node:crypto";
+import { parseClientRequest } from "@agent-console/protocol";
 import type { ClientRequest, ClientResponse, RpcErrorCode } from "@agent-console/protocol";
+import { WebSocket, WebSocketServer } from "ws";
+import type { VerifyClientCallbackSync } from "ws";
 import type { AgentManager } from "./agent-manager.js";
 
 export interface WsServerOptions {
   port: number;
   host?: string;
+  token?: string;
 }
 
 class UnknownMethodError extends Error {
@@ -31,9 +35,11 @@ export class WsServer {
       this.readyResolve = resolve;
       this.readyReject = reject;
     });
+    const verifyClient: VerifyClientCallbackSync = (info) => this.isClientAuthorized(info.req.url);
     this.wss = new WebSocketServer({
       port: options.port,
       host: options.host ?? "127.0.0.1",
+      verifyClient,
     });
     // 独立监听模式下，wss.on('listening') 比构造时的同步绑定更可依赖
     this.wss.on("listening", () => {
@@ -96,17 +102,24 @@ export class WsServer {
   }
 
   private async handleMessage(socket: WebSocket, raw: string): Promise<void> {
-    let request: ClientRequest & { id: number };
+    let parsed: unknown;
     try {
-      request = JSON.parse(raw);
+      parsed = JSON.parse(raw);
     } catch {
       this.send(socket, { id: -1, ok: false, code: "INVALID_JSON", error: "invalid JSON" });
       return;
     }
-    if (typeof request.id !== "number" || typeof request.method !== "string") {
-      this.send(socket, { id: -1, ok: false, code: "INVALID_REQUEST", error: "missing id or method" });
+    const parsedRequest = parseClientRequest(parsed);
+    if (!parsedRequest.ok) {
+      this.send(socket, {
+        id: parsedRequest.id ?? -1,
+        ok: false,
+        code: parsedRequest.code,
+        error: parsedRequest.error,
+      });
       return;
     }
+    const { request } = parsedRequest;
     try {
       const result = await this.dispatch(request);
       this.send(socket, { id: request.id, ok: true, result });
@@ -114,10 +127,32 @@ export class WsServer {
       this.send(socket, {
         id: request.id,
         ok: false,
-        code: error instanceof UnknownMethodError ? error.code : "INTERNAL",
+        code: "INTERNAL",
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  private isClientAuthorized(rawUrl: string | undefined): boolean {
+    const expectedToken = this.options.token;
+    if (expectedToken === undefined) {
+      return true;
+    }
+    const url = new URL(rawUrl ?? "/", "http://localhost");
+    const tokens = url.searchParams.getAll("token");
+    if (tokens.length !== 1) {
+      return false;
+    }
+    const actualToken = tokens[0];
+    if (actualToken === undefined) {
+      return false;
+    }
+    if (Buffer.byteLength(expectedToken) !== Buffer.byteLength(actualToken)) {
+      return false;
+    }
+    const expected = Buffer.from(expectedToken);
+    const actual = Buffer.from(actualToken);
+    return timingSafeEqual(expected, actual);
   }
 
   private async dispatch(request: ClientRequest): Promise<unknown> {
@@ -203,7 +238,7 @@ export class WsServer {
       }
 
       default:
-        throw new UnknownMethodError(`未知方法: ${(request as { method: string }).method}`);
+        throw new UnknownMethodError(`未知方法: ${request.method}`);
     }
   }
 

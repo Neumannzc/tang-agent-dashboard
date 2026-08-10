@@ -33,7 +33,13 @@ async function main(): Promise<void> {
 
   const store = new SessionStore();
   const manager = new AgentManager(store, config);
-  const wsServer = new WsServer(manager, { port, host: "127.0.0.1" });
+  const wsServer = new WsServer(manager, {
+    port,
+    host: "127.0.0.1",
+    ...(process.env.AGENT_CONSOLE_WS_TOKEN === undefined
+      ? {}
+      : { token: process.env.AGENT_CONSOLE_WS_TOKEN }),
+  });
   try {
     await wsServer.ready();
   } catch (error) {
