@@ -18,7 +18,8 @@ export type ClientRequest =
   | { method: "sessions.list" }
   | { method: "session.resume"; params: { sessionId: string; cwd?: string } }
   | { method: "sessions.scanHistory"; params: { providers: AgentProvider[] } }
-  | { method: "sessions.importHistory"; params: { providers: AgentProvider[] } };
+  | { method: "sessions.importHistory"; params: { providers: AgentProvider[] } }
+  | { method: "sessions.deleteProject"; params: { cwd: string | null } };
 
 export type RpcErrorCode =
   | "INVALID_JSON"
@@ -125,6 +126,11 @@ export function parseClientRequest(raw: unknown): ParseClientRequestResult {
       if (!isRecord(params) || !hasOnlyProperties(params, ["providers"])) return invalidParams();
       const { providers } = params;
       return Array.isArray(providers) && providers.every(isAgentProvider) ? validRequest({ id, method: raw["method"], params: { providers } }) : invalidParams();
+    }
+    case "sessions.deleteProject": {
+      if (!isRecord(params) || !hasOnlyProperties(params, ["cwd"])) return invalidParams();
+      const { cwd } = params;
+      return typeof cwd === "string" || cwd === null ? validRequest({ id, method: "sessions.deleteProject", params: { cwd } }) : invalidParams();
     }
     default:
       return invalidRequest("UNKNOWN_METHOD", "unknown method", id);

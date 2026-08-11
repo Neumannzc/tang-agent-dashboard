@@ -87,6 +87,28 @@ test("rolls back a failing putMany transaction and treats an empty batch as a no
   assert.deepEqual(store.list(), []);
 });
 
+test("removes every session under a cwd, including null-cwd rows", (context) => {
+  // Given: sessions spread across two projects plus one without a cwd
+  const { directory, store } = createTempStore();
+  context.after(() => closeAndRemove(store, directory));
+  store.put(session("a", { cwd: "/proj/x" }));
+  store.put(session("b", { cwd: "/proj/x" }));
+  store.put(session("c", { cwd: "/proj/y" }));
+  store.put(session("d", { cwd: undefined }));
+
+  // When: the project and then the ungrouped rows are removed
+  const removedX = store.removeByCwd("/proj/x");
+  const removedNull = store.removeByCwd(null);
+
+  // Then: only the matching rows disappear and the count is exact
+  assert.equal(removedX, 2);
+  assert.equal(removedNull, 1);
+  assert.deepEqual(
+    store.list().map((s) => s.sessionId),
+    ["c"],
+  );
+});
+
 test("ignores corrupted stored handles without breaking list or get", (context) => {
   // Given: a persisted session whose handle column is no longer valid JSON
   const { dbPath, directory, store } = createTempStore();

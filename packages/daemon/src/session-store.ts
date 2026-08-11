@@ -121,6 +121,15 @@ export class SessionStore {
     this.db.prepare("DELETE FROM sessions WHERE session_id = ?").run(sessionId);
   }
 
+  /** 删除某项目目录（cwd）下的全部会话行；cwd 为 null 时删除无目录会话；返回删除条数 */
+  removeByCwd(cwd: string | null): number {
+    const result =
+      cwd === null
+        ? this.db.prepare("DELETE FROM sessions WHERE cwd IS NULL").run()
+        : this.db.prepare("DELETE FROM sessions WHERE cwd = ?").run(cwd);
+    return Number(result.changes ?? 0);
+  }
+
   private init(): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS sessions (

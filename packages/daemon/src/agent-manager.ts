@@ -187,6 +187,16 @@ export class AgentManager {
     }
   }
 
+  /** 删除项目：先关闭该目录下所有加载中的会话（清理 agent 子进程），再删除 store 中的会话行 */
+  async deleteProject(cwd: string | null): Promise<{ removed: number }> {
+    for (const sessionId of [...this.sessions.keys()]) {
+      if (this.store.get(sessionId)?.cwd === cwd) {
+        await this.closeSession(sessionId);
+      }
+    }
+    return { removed: this.store.removeByCwd(cwd) };
+  }
+
   async shutdown(): Promise<void> {
     const sessions = [...this.sessions.values()];
     this.sessions.clear();

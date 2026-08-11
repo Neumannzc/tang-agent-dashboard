@@ -1,11 +1,26 @@
 // 侧边栏：项目（workspace）树 + 项目下嵌套会话行 + 新建/导入/账户区
-// 仅激活 workspace 展开嵌套（NewSessionRow + SessionRow 列表）
+// 每个项目可点击折叠/展开（状态持久化）；激活项目保证展开
+// 删除项目：hover ×（二次点击确认，不发 popup）
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SessionSummary } from "@agent-console/protocol";
 import type { Workspace } from "../state.js";
+import { UNGROUPED } from "../state.js";
 import { SessionRow } from "./SessionRow.js";
 import { NewSessionRow } from "./NewSessionRow.js";
+
+const EXPANDED_KEY = "tang-ai-chat:expandedCwds";
+const CONFIRM_WINDOW_MS = 2500;
+
+function loadExpanded(): Set<string> {
+  try {
+    const raw = localStorage.getItem(EXPANDED_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
+    return new Set(Array.isArray(parsed) ? (parsed as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
 
 function FolderIcon() {
   return (
@@ -65,6 +80,7 @@ export function Sidebar(props: {
   onSwitchWorkspace: (cwd: string) => void;
   onSwitchSession: (sessionId: string) => void;
   onCloseSession: (sessionId: string) => void;
+  onDeleteProject: (cwd: string | null) => void;
   onNewSession: (cwd: string) => void;
   onImport: () => void;
   onOpenSettings: () => void;
@@ -82,11 +98,61 @@ export function Sidebar(props: {
     onSwitchWorkspace,
     onSwitchSession,
     onCloseSession,
+    onDeleteProject,
     onNewSession,
     onImport,
     onOpenSettings,
   } = props;
   const [query, setQuery] = useState("");
+  const [expanded, setExpanded] = useState<Set<string>>(loadExpanded);
+  const [confirmingCwd, setConfirmingCwd] = useState<string | null>(null);
+  const confirmTimer = useRef<number | undefined>(undefined);
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(confirmTimer.current);
+    },
+    [],
+  );
+
+  /** 删除确认：第一次点击进入确认态（2.5s 后自动复位），第二次点击执行 */
+  const armDelete = (cwd: string) => {
+    if (confirmingCwd !== cwd) {
+      setConfirmingCwd(cwd);
+      window.clearTimeout(confirmTimer.current);
+      confirmTimer.current = window.setTimeout(() => setConfirmingCwd(null), CONFIRM_WINDOW_MS);
+      return;
+    }
+    window.clearTimeout(confirmTimer.current);
+    setConfirmingCwd(null);
+    onDeleteProject(cwd === UNGROUPED ? null : cwd);
+  };
+
+
+  // 激活 workspace 保证展开：覆盖挂载恢复、新建/导入后切换；用户折叠当前项目时 activeCwd 不变，不受影响
+  useEffect(() => {
+    if (activeCwd) {
+      setExpanded((s) => (s.has(activeCwd) ? s : new Set(s).add(activeCwd)));
+    }
+  }, [activeCwd]);
+
+  useEffect(() => {
+    localStorage.setItem(EXPANDED_KEY, JSON.stringify([...expanded]));
+  }, [expanded]);
+
+  /** 点击项目：激活且展开 → 仅折叠；否则 → 展开 + 切换 */
+  const toggleWorkspace = (w: Workspace) => {
+    if (expanded.has(w.cwd) && w.cwd === activeCwd) {
+      setExpanded((s) => {
+        const next = new Set(s);
+        next.delete(w.cwd);
+        return next;
+      });
+      return;
+    }
+    setExpanded((s) => (s.has(w.cwd) ? s : new Set(s).add(w.cwd)));
+    onSwitchWorkspace(w.cwd);
+  };
 
   const filtered = query.trim()
     ? workspaces.filter((w) => w.cwd.includes(query.trim()) || projectName(w.cwd).includes(query.trim()))
@@ -117,20 +183,42 @@ export function Sidebar(props: {
         {filtered.length === 0 ? <div className="sec" style={{ paddingTop: 8 }}>暂无项目</div> : null}
         {filtered.map((w) => {
           const isActive = w.cwd === activeCwd;
+          const isOpen = expanded.has(w.cwd);
+          const confirming = confirmingCwd === w.cwd;
           return (
             <div key={w.cwd} className="ws-block">
               <button
-                className={`ws-item ${isActive ? "active" : ""}`}
-                onClick={() => onSwitchWorkspace(w.cwd)}
+                className={`ws-item ${isActive ? "active" : ""}${confirming ? " confirming" : ""}`}
+                onClick={() => toggleWorkspace(w)}
               >
                 <div className="row">
+                  <svg className={`icon ws-chev${isOpen ? "" : " collapsed"}`} viewBox="0 0 24 24">
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
                   <FolderIcon />
                   <span className="name">{projectName(w.cwd)}</span>
-                  <span className="count">{w.sessionIds.length ? `${w.sessionIds.length} 会话` : "空"}</span>
+                  <span className={`count${confirming ? " danger" : ""}`}>
+                    {confirming ? "再点确认删除" : w.sessionIds.length ? `${w.sessionIds.length} 会话` : "空"}
+                  </span>
+                  <span
+                    className="session-action ws-del"
+                    role="button"
+                    tabIndex={-1}
+                    title={confirming ? "再点击一次确认删除该项目" : "删除项目（再点击一次确认）"}
+                    aria-label={`删除项目 ${projectName(w.cwd)}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      armDelete(w.cwd);
+                    }}
+                  >
+                    <svg className="icon" viewBox="0 0 24 24">
+                      <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14M10 11v6M14 11v6" />
+                    </svg>
+                  </span>
                 </div>
                 <div className="path">{w.cwd}</div>
               </button>
-              {isActive ? (
+              {isOpen ? (
                 <div className="ws-sessions">
                   <NewSessionRow
                     workspaceName={projectName(w.cwd)}
@@ -164,7 +252,7 @@ export function Sidebar(props: {
           {error}
         </div>
       ) : null}
-      <button className="btn-import" onClick={onImport} title="扫描 agent 本地历史会话并导入（二期）">
+      <button className="btn-import" onClick={onImport} title="扫描 agent 本地历史会话并导入">
         <ImportIcon />
         导入历史会话
       </button>

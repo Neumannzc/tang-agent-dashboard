@@ -96,6 +96,14 @@ class FakeClient implements AgentClient {
   async shutdown(): Promise<void> {}
 }
 
+class CloseTrackingSession extends FakeSession {
+  closed = false;
+
+  override async close(): Promise<void> {
+    this.closed = true;
+  }
+}
+
 class ThrowingTouchStore extends SessionStore {
   readonly failure = new Error("touch failed");
   private throwsOnNextTouch = true;
@@ -115,6 +123,49 @@ function createManager(tempDir: string, session: FakeSession): { readonly manage
   const manager = new AgentManager(store, {}, () => client);
   return { manager, store };
 }
+
+test("deleteProject closes loaded sessions of that cwd and removes its store rows", async (context) => {
+  // Given: one loaded session in <temp>/proj/x plus another store row of the same project
+  const tempDir = mkdtempSync(path.join(tmpdir(), "agent-console-manager-"));
+  context.after(() => rmSync(tempDir, { recursive: true, force: true }));
+  const projX = path.join(tempDir, "proj/x");
+  mkdirSync(projX, { recursive: true });
+  const session = new CloseTrackingSession();
+  const { manager, store } = createManager(tempDir, session);
+  await manager.createSession({ provider: "pi", cwd: projX });
+  store.put({ sessionId: "extra", provider: "pi", cwd: projX, createdAt: 1 });
+  store.put({ sessionId: "other", provider: "pi", cwd: "/proj/y", createdAt: 1 });
+
+  // When: the project is deleted
+  const { removed } = await manager.deleteProject(projX);
+
+  // Then: the loaded session is closed, matching rows are gone, others remain
+  assert.equal(session.closed, true);
+  assert.equal(removed, 2);
+  assert.deepEqual(
+    store.list().map((s) => s.sessionId),
+    ["other"],
+  );
+});
+
+test("deleteProject with null cwd removes only ungrouped rows", async (context) => {
+  // Given: rows with and without a cwd, none loaded in memory
+  const tempDir = mkdtempSync(path.join(tmpdir(), "agent-console-manager-"));
+  context.after(() => rmSync(tempDir, { recursive: true, force: true }));
+  const { manager, store } = createManager(tempDir, new FakeSession());
+  store.put({ sessionId: "ungrouped", provider: "pi", createdAt: 1 });
+  store.put({ sessionId: "grouped", provider: "pi", cwd: "/proj/y", createdAt: 1 });
+
+  // When: the ungrouped bucket is deleted
+  const { removed } = await manager.deleteProject(null);
+
+  // Then: only the null-cwd row disappears
+  assert.equal(removed, 1);
+  assert.deepEqual(
+    store.list().map((s) => s.sessionId),
+    ["grouped"],
+  );
+});
 
 test("rejects a concurrent prompt and clears the running mark after success", async (context) => {
   // Given: a real manager session whose first run remains pending

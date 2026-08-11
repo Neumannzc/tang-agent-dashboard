@@ -18,6 +18,8 @@ export interface Workspace {
 
 const UNGROUPED = "(未归组)";
 
+export { UNGROUPED };
+
 /** 由会话列表聚合出 workspace 列表（方案 A：按 cwd 分组，协议不改） */
 export function buildWorkspaces(sessions: SessionSummary[], knownCwds: string[]): Workspace[] {
   const map = new Map<string, string[]>();

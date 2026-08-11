@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentMode, AgentModelDefinition, AgentPermissionRequest, AgentProvider, SessionSummary } from "@agent-console/protocol";
 import { DaemonClient, resolveDaemonWsUrl } from "./ws.js";
-import { applyEvent, buildWorkspaces, sessionCwd } from "./state.js";
+import { applyEvent, buildWorkspaces, sessionCwd, UNGROUPED } from "./state.js";
 import type { ThreadItem } from "./state.js";
 import { applyTheme, loadThemeMode, SYSTEM_THEME_ID } from "./theme.js";
 import { Sidebar } from "./components/Sidebar.js";
@@ -390,6 +390,29 @@ export function App() {
     [],
   );
 
+  /** 删除项目：移除 knownCwds + 本地会话列表，再通知 daemon 关闭子进程并删 store 行 */
+  const handleDeleteProject = useCallback(async (cwd: string | null) => {
+    const key = cwd ?? UNGROUPED;
+    setKnownCwds((list) => {
+      const next = list.filter((c) => c !== cwd);
+      localStorage.setItem(KNOWN_CWDS_KEY, JSON.stringify(next));
+      return next;
+    });
+    setSessions((list) =>
+      list.filter((s) => (s.cwd?.trim() || UNGROUPED) !== key),
+    );
+    if (activeWorkspaceRef.current === key) {
+      setActiveCwd(null);
+      setActiveSessionId(null);
+      setDraft(null);
+    }
+    try {
+      await clientRef.current.deleteProject(cwd);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
+
   const handleUserMessage = useCallback((text: string) => {
     const sessionId = activeSessionIdRef.current;
     if (!sessionId) {
@@ -623,6 +646,7 @@ export function App() {
         }}
         onSwitchSession={(id) => void handleSwitchSession(id)}
         onCloseSession={(id) => void handleCloseSession(id)}
+        onDeleteProject={(cwd) => void handleDeleteProject(cwd)}
         onNewSession={handleNewSessionDraft}
         onImport={() => setModal("import")}
         onOpenSettings={() => setModal("settings")}
@@ -642,6 +666,7 @@ export function App() {
             hasAny={workspaces.length > 0}
             onNewSession={() => handleNewSessionDraft(activeWorkspace?.cwd ?? "")}
             onNewWorkspace={() => setModal("workspace")}
+            onImport={() => setModal("import")}
           />
         )}
         <Composer
@@ -687,8 +712,8 @@ export function App() {
 
 // ---------- 空项目 / 欢迎页 ----------
 
-function EmptyProject(props: { cwd: string; hasAny: boolean; onNewSession: () => void; onNewWorkspace: () => void }) {
-  const { cwd, hasAny, onNewSession, onNewWorkspace } = props;
+function EmptyProject(props: { cwd: string; hasAny: boolean; onNewSession: () => void; onNewWorkspace: () => void; onImport: () => void }) {
+  const { cwd, hasAny, onNewSession, onNewWorkspace, onImport } = props;
   return (
     <div className="thread">
       <div className="thread-inner">
@@ -717,8 +742,8 @@ function EmptyProject(props: { cwd: string; hasAny: boolean; onNewSession: () =>
                 <button className="btn btn-primary" onClick={onNewWorkspace}>
                   新建 workspace
                 </button>
-                <button className="btn" onClick={onNewSession} disabled>
-                  导入历史会话（二期）
+                <button className="btn" onClick={onImport}>
+                  导入历史会话
                 </button>
               </div>
             </>

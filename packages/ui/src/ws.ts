@@ -148,6 +148,10 @@ export class DaemonClient {
     });
   }
 
+  deleteProject(cwd: string | null): Promise<{ removed: number }> {
+    return this.rpc<{ removed: number }>("sessions.deleteProject", { cwd });
+  }
+
   prompt(sessionId: string, prompt: string): Promise<AgentRunResult> {
     return this.rpc<AgentRunResult>("agent.prompt", { sessionId, prompt });
   }

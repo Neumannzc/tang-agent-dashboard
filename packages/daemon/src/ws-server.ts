@@ -229,6 +229,11 @@ export class WsServer {
         return { imported, skipped };
       }
 
+      case "sessions.deleteProject": {
+        const { removed } = await this.manager.deleteProject(request.params.cwd);
+        return { removed };
+      }
+
       case "session.resume": {
         const summary = await this.manager.resumeSession(
           request.params.sessionId,

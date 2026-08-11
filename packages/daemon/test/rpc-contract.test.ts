@@ -33,6 +33,8 @@ test("accepts every RPC method with its required parameter shape", () => {
     { id: 13, method: "session.resume", params: { sessionId: "session" } },
     { id: 14, method: "sessions.scanHistory", params: { providers: ["pi", "codex"] } },
     { id: 15, method: "sessions.importHistory", params: { providers: ["opencode", "claude"] } },
+    { id: 16, method: "sessions.deleteProject", params: { cwd: "/proj/x" } },
+    { id: 17, method: "sessions.deleteProject", params: { cwd: null } },
   ];
 
   // When / Then: every valid wire shape is accepted
@@ -56,6 +58,8 @@ test("rejects malformed RPC params while allowing optional fields and unknown to
   assertRejected({ id: 1, method: "agent.thinking.set", params: { sessionId: "session", thinkingOptionId: 5 } }, "INVALID_PARAMS");
   assertRejected({ id: 1, method: "agent.permission.respond", params: { sessionId: "session", requestId: "request", behavior: "maybe" } }, "INVALID_PARAMS");
   assertRejected({ id: 1, method: "sessions.scanHistory", params: { providers: ["pi", "nope"] } }, "INVALID_PARAMS");
+  assertRejected({ id: 1, method: "sessions.deleteProject", params: { cwd: 42 } }, "INVALID_PARAMS");
+  assertRejected({ id: 1, method: "sessions.deleteProject", params: {} }, "INVALID_PARAMS");
   assertRejected({ id: 1, method: "agent.create", params: { provider: "pi", cwd: 42 } }, "INVALID_PARAMS");
   assertAccepted({ id: 1, method: "agent.permission.respond", params: { sessionId: "session", requestId: "request", behavior: "deny", value: "reason", interrupt: false } });
   assertAccepted({ id: 1, method: "session.resume", params: { sessionId: "session" }, extension: true });

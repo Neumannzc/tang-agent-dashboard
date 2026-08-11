@@ -266,6 +266,18 @@ body {
   gap: 8px;
 }
 
+.ws-item .ws-chev {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+  color: var(--text-faint);
+  transition: transform 0.12s;
+}
+
+.ws-item .ws-chev.collapsed {
+  transform: rotate(-90deg);
+}
+
 .ws-item .ficon {
   color: var(--text-dim);
   width: 14px;
@@ -289,7 +301,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   margin-top: 1px;
-  padding-left: 22px;
+  padding-left: 41px;
 }
 
 .ws-item .count {
@@ -301,6 +313,25 @@ body {
   border-radius: 10px;
   padding: 1px 7px;
   flex-shrink: 0;
+}
+
+.ws-item .count.danger {
+  color: var(--status-danger);
+  border-color: var(--status-danger);
+  font-weight: 600;
+}
+
+.ws-item .ws-del {
+  display: none;
+}
+
+.ws-item:hover .ws-del,
+.ws-item.confirming .ws-del {
+  display: flex;
+}
+
+.ws-item.confirming {
+  outline: 1px solid var(--status-danger);
 }
 
 .ws-item.active .count {
@@ -1428,6 +1459,73 @@ body {
 .imp-list::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);
   border-radius: 3px;
+}
+
+.imp-group {
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.imp-group:last-child {
+  border-bottom: none;
+}
+
+.imp-group-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 8px 12px 3px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  transition: background 0.1s;
+}
+
+.imp-group-head:hover {
+  background: var(--card);
+}
+
+.imp-group-head .imp-group-name {
+  flex: 1;
+}
+
+.imp-chev {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+  color: var(--text-faint);
+  transition: transform 0.12s;
+}
+
+.imp-group-head.collapsed .imp-chev {
+  transform: rotate(-90deg);
+}
+
+.imp-group-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.imp-group-count {
+  font-size: 11px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.imp-group-path {
+  padding: 0 12px 6px;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .imp-row {

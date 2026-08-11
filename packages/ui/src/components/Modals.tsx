@@ -129,6 +129,12 @@ const UNGROUPED = "(未归组)";
 /** 预览列表单组最多渲染行数（其余仍会导入，仅显示省略提示） */
 const PREVIEW_ROW_CAP = 300;
 
+function projectName(cwd: string): string {
+  const trimmed = cwd.replace(/\/+$/, "");
+  const parts = trimmed.split("/");
+  return parts[parts.length - 1] || trimmed;
+}
+
 function formatImportTime(ts: number): string {
   const diff = Date.now() - ts;
   if (diff < 60_000) {
@@ -157,6 +163,20 @@ export function ImportModal(props: {
   const [importedCount, setImportedCount] = useState(0);
   const [skipped, setSkipped] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  /** 折叠的项目组（key = cwd） */
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  const toggleGroup = (cwd: string) => {
+    setCollapsed((s) => {
+      const next = new Set(s);
+      if (next.has(cwd)) {
+        next.delete(cwd);
+      } else {
+        next.add(cwd);
+      }
+      return next;
+    });
+  };
 
   const toggle = (p: string) => {
     setSelected((list) => (list.includes(p) ? list.filter((x) => x !== p) : [...list, p]));
@@ -291,40 +311,58 @@ export function ImportModal(props: {
                 未发现可导入的历史会话。
               </div>
             ) : phase === "preview" && groups.length > 0 ? (
-              groups.map(([cwd, sessions]) => (
-                <div key={cwd}>
-                  <div
-                    className="i-cwd"
-                    style={{ padding: "7px 12px 3px", fontWeight: 600, color: "var(--text-dim)" }}
-                  >
-                    {cwd} · {sessions.length} 条
-                  </div>
-                  {sessions.slice(0, PREVIEW_ROW_CAP).map((session) => {
-                    const meta = providerMeta(session.provider);
-                    return (
-                      <div key={session.id} className="imp-row">
-                        <span className="dotp" style={{ background: meta.color }} />
-                        <div className="i-main">
-                          <div className="i-title">{session.title ?? session.cwd ?? session.id}</div>
-                          <div className="i-cwd">{session.cwd ?? UNGROUPED}</div>
-                        </div>
-                        <div className="i-meta">
-                          <span className="i-time">
-                            {formatImportTime(session.lastActiveAt ?? session.createdAt)}
-                          </span>
-                          {session.imported ? <span className="i-badge gone">已导入</span> : null}
-                          {!session.recoverable ? <span className="i-badge gone">不可恢复</span> : null}
-                        </div>
+              groups.map(([cwd, sessions]) => {
+                const isCollapsed = collapsed.has(cwd);
+                return (
+                  <div key={cwd} className="imp-group">
+                    <button
+                      type="button"
+                      className={`imp-group-head${isCollapsed ? " collapsed" : ""}`}
+                      onClick={() => toggleGroup(cwd)}
+                      title={isCollapsed ? "展开" : "折叠"}
+                    >
+                      <svg className="icon imp-chev" viewBox="0 0 24 24">
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                      <span className="imp-group-name">
+                        {cwd === UNGROUPED ? UNGROUPED : projectName(cwd)}
+                      </span>
+                      <span className="imp-group-count">{sessions.length} 条</span>
+                    </button>
+                    {cwd !== UNGROUPED ? (
+                      <div className="imp-group-path" title={cwd}>
+                        {cwd}
                       </div>
-                    );
-                  })}
-                  {sessions.length > PREVIEW_ROW_CAP ? (
-                    <div style={{ padding: "6px 12px", color: "var(--text-faint)", fontSize: 11.5 }}>
-                      … 其余 {sessions.length - PREVIEW_ROW_CAP} 条省略（仍会导入）
-                    </div>
-                  ) : null}
-                </div>
-              ))
+                    ) : null}
+                    {!isCollapsed ? (
+                      sessions.slice(0, PREVIEW_ROW_CAP).map((session) => {
+                        const meta = providerMeta(session.provider);
+                        return (
+                          <div key={session.id} className="imp-row">
+                            <span className="dotp" style={{ background: meta.color }} />
+                            <div className="i-main">
+                              <div className="i-title">{session.title ?? session.cwd ?? session.id}</div>
+                              <div className="i-cwd">{session.cwd ?? UNGROUPED}</div>
+                            </div>
+                            <div className="i-meta">
+                              <span className="i-time">
+                                {formatImportTime(session.lastActiveAt ?? session.createdAt)}
+                              </span>
+                              {session.imported ? <span className="i-badge gone">已导入</span> : null}
+                              {!session.recoverable ? <span className="i-badge gone">不可恢复</span> : null}
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : null}
+                    {!isCollapsed && sessions.length > PREVIEW_ROW_CAP ? (
+                      <div style={{ padding: "6px 12px", color: "var(--text-faint)", fontSize: 11.5 }}>
+                        … 其余 {sessions.length - PREVIEW_ROW_CAP} 条省略（仍会导入）
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })
             ) : (
               <div style={{ padding: "14px 16px", color: "var(--text-faint)", fontSize: 12.5 }}>
                 选择 Agent 后点击「扫描历史会话」。
